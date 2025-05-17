@@ -1,10 +1,11 @@
 use base64::{Engine, engine::general_purpose};
-use hmac::Mac;
+use hmac::{Hmac, Mac};
 use indexmap::IndexMap;
 
-use crate::HmacSha256;
-
-use super::constants::{ISCCC_ALG_HMAC_SHA256, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE};
+use super::constants::{
+    ISCCC_ALG_HMAC_SHA1, ISCCC_ALG_HMAC_SHA224, ISCCC_ALG_HMAC_SHA256, ISCCC_ALG_HMAC_SHA384,
+    ISCCC_ALG_HMAC_SHA512, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE, RNDCALG,
+};
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -64,37 +65,118 @@ fn table_towire(val: &IndexMap<String, RNDCValue>, no_header: bool) -> Vec<u8> {
 }
 
 fn make_signature(
+    algorithm: &RNDCALG,
     secret: &[u8],
     message_body: &IndexMap<String, RNDCValue>,
 ) -> Result<RNDCValue, String> {
     let databuf = table_towire(message_body, true);
 
-    let mut mac = match HmacSha256::new_from_slice(secret) {
-        Ok(m) => m,
-        Err(_) => return Err("Failed to create HMAC SHA256 instance".to_string()),
+    let (sig_type, sig_b64, alg_code) = match algorithm {
+        RNDCALG::MD5 => {
+            let mut mac = match Hmac::<md5::Md5>::new_from_slice(secret) {
+                Ok(m) => m,
+                Err(_) => return Err("Failed to create HMAC MD5 instance".to_string()),
+            };
+            mac.update(&databuf);
+            let digest = mac.finalize().into_bytes();
+            let mut sig_b64 = general_purpose::STANDARD.encode(&digest);
+
+            // no padding on hmd5
+            sig_b64 = sig_b64.trim_end_matches('=').to_string();
+            ("hmd5".to_string(), sig_b64, 157u8)
+        }
+        RNDCALG::SHA1 => {
+            let mut mac = match Hmac::<sha1::Sha1>::new_from_slice(secret) {
+                Ok(m) => m,
+                Err(_) => return Err("Failed to create HMAC SHA1 instance".to_string()),
+            };
+            mac.update(&databuf);
+            let digest = mac.finalize().into_bytes();
+            (
+                "hsha".to_string(),
+                general_purpose::STANDARD.encode(&digest),
+                ISCCC_ALG_HMAC_SHA1,
+            )
+        }
+        RNDCALG::SHA224 => {
+            let mut mac = match Hmac::<sha2::Sha224>::new_from_slice(secret) {
+                Ok(m) => m,
+                Err(_) => return Err("Failed to create HMAC SHA224 instance".to_string()),
+            };
+            mac.update(&databuf);
+            let digest = mac.finalize().into_bytes();
+            (
+                "hsha".to_string(),
+                general_purpose::STANDARD.encode(&digest),
+                ISCCC_ALG_HMAC_SHA224,
+            )
+        }
+        RNDCALG::SHA256 => {
+            let mut mac = match Hmac::<sha2::Sha256>::new_from_slice(secret) {
+                Ok(m) => m,
+                Err(_) => return Err("Failed to create HMAC SHA256 instance".to_string()),
+            };
+            mac.update(&databuf);
+            let digest = mac.finalize().into_bytes();
+            (
+                "hsha".to_string(),
+                general_purpose::STANDARD.encode(&digest),
+                ISCCC_ALG_HMAC_SHA256,
+            )
+        }
+        RNDCALG::SHA384 => {
+            let mut mac = match Hmac::<sha2::Sha384>::new_from_slice(secret) {
+                Ok(m) => m,
+                Err(_) => return Err("Failed to create HMAC SHA384 instance".to_string()),
+            };
+            mac.update(&databuf);
+            let digest = mac.finalize().into_bytes();
+            (
+                "hsha".to_string(),
+                general_purpose::STANDARD.encode(&digest),
+                ISCCC_ALG_HMAC_SHA384,
+            )
+        }
+        RNDCALG::SHA512 => {
+            let mut mac = match Hmac::<sha2::Sha512>::new_from_slice(secret) {
+                Ok(m) => m,
+                Err(_) => return Err("Failed to create HMAC SHA512 instance".to_string()),
+            };
+            mac.update(&databuf);
+            let digest = mac.finalize().into_bytes();
+            (
+                "hsha".to_string(),
+                general_purpose::STANDARD.encode(&digest),
+                ISCCC_ALG_HMAC_SHA512,
+            )
+        }
     };
-    mac.update(&databuf);
-    let digest = mac.finalize().into_bytes();
 
-    let sig_b64 = general_purpose::STANDARD.encode(&digest);
+    let sig_buf = if sig_type == "hmd5" {
+        RNDCValue::Binary(sig_b64.as_bytes().to_vec())
+    } else {
+        let mut buf = vec![0u8; 89];
+        buf[0] = alg_code;
+        buf[1..(1 + sig_b64.len())].copy_from_slice(sig_b64.as_bytes());
+        RNDCValue::Binary(buf)
+    };
 
-    let mut sig_buf = vec![0u8; 89];
-    sig_buf[0] = ISCCC_ALG_HMAC_SHA256; // 163
-    sig_buf[1..(1 + sig_b64.len())].copy_from_slice(sig_b64.as_bytes());
+    let mut auth_map = IndexMap::new();
+    auth_map.insert(sig_type, sig_buf);
 
-    // _auth: { hsha: sig_buf }
-    let mut hsha_map = IndexMap::new();
-    hsha_map.insert("hsha".to_string(), RNDCValue::Binary(sig_buf));
-
-    Ok(RNDCValue::Table(hsha_map))
+    Ok(RNDCValue::Table(auth_map))
 }
 
-pub fn encode(obj: &mut IndexMap<String, RNDCValue>, secret: &[u8]) -> Result<Vec<u8>, String> {
+pub fn encode(
+    obj: &mut IndexMap<String, RNDCValue>,
+    algorithm: &RNDCALG,
+    secret: &[u8],
+) -> Result<Vec<u8>, String> {
     obj.shift_remove("_auth");
 
     let databuf = table_towire(obj, true);
 
-    let sig_value = make_signature(secret, obj)?;
+    let sig_value = make_signature(algorithm, secret, obj)?;
 
     let mut sig_map = IndexMap::new();
     sig_map.insert("_auth".to_string(), sig_value);

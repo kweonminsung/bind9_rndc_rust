@@ -2,30 +2,29 @@ mod internal;
 
 use base64::Engine;
 use base64::engine::general_purpose;
-use hmac::Hmac;
 use indexmap::IndexMap;
+use internal::constants::RNDCALG;
 use internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils};
-use sha2::Sha256;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-type HmacSha256 = Hmac<Sha256>;
-
 pub struct RndcClient {
     server_url: String,
+    algorithm: RNDCALG,
     secret_key: Vec<u8>,
     stream: Option<TcpStream>,
     nonce: Option<String>,
 }
 
 impl RndcClient {
-    pub fn new(server_url: &str, secret_key_b64: &str) -> Self {
+    pub fn new(server_url: &str, algorithm: &str, secret_key_b64: &str) -> Self {
         let secret_key = general_purpose::STANDARD
             .decode(secret_key_b64.as_bytes())
             .expect("Invalid base64 RNDC_SECRET_KEY");
 
         RndcClient {
             server_url: server_url.to_string(),
+            algorithm: RNDCALG::from_string(algorithm).expect("Invalid RNDC algorithm"),
             secret_key,
             stream: None,
             nonce: None,
@@ -48,7 +47,13 @@ impl RndcClient {
     }
 
     fn rndc_handshake(&mut self) -> Result<(), String> {
-        let msg = RndcClient::build_message("null", &self.secret_key, None, rand::random())?;
+        let msg = RndcClient::build_message(
+            "null",
+            &self.algorithm,
+            &self.secret_key,
+            None,
+            rand::random(),
+        )?;
 
         let stream = self.get_stream();
         match stream.write_all(&msg) {
@@ -71,6 +76,7 @@ impl RndcClient {
 
         let msg = RndcClient::build_message(
             command,
+            &self.algorithm,
             &self.secret_key,
             self.nonce.as_deref(),
             rand::random(),
@@ -95,6 +101,7 @@ impl RndcClient {
 
     fn build_message(
         command: &str,
+        algorithm: &RNDCALG,
         secret: &[u8],
         nonce: Option<&str>,
         ser: u32,
@@ -135,7 +142,7 @@ impl RndcClient {
         message_body.insert("_ctrl".to_string(), RNDCValue::Table(ctrl_map));
         message_body.insert("_data".to_string(), RNDCValue::Table(data_map));
 
-        match encoder::encode(&mut message_body, secret) {
+        match encoder::encode(&mut message_body, algorithm, secret) {
             Ok(buf) => Ok(buf),
             Err(e) => Err(format!("Failed to encode message: {}", e)),
         }
