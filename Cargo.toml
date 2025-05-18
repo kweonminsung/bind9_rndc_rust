@@ -1,7 +1,12 @@
 [package]
+edition = "2024"
 name = "rndc"
 version = "0.1.0"
-edition = "2024"
+authors = ["kweonminsung"]
+description = "BIND9 RNDC protocol implementation for Rust"
+repository = "https://github.com/kweonminsung/bind9_rndc_rust"
+license = "MIT"
+keywords = ["BIND9", "RNDC", "Rust"]
 
 [dependencies]
 hmac = "0.12.1"

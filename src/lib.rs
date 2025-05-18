@@ -103,7 +103,7 @@ impl RndcClient {
         let resp = decoder::decode(&res)?;
 
         if let Some(RNDCPayload::Table(data)) = resp.get("_data") {
-            dbg!("Received data: {:?}", data);
+            // dbg!("Received data: {:?}", data);
 
             let result = data.get("result").and_then(|v| {
                 if let RNDCPayload::String(s) = v {
@@ -190,7 +190,7 @@ impl RndcClient {
         if let Some(ctrl) = resp.get("_ctrl") {
             if let RNDCPayload::Table(ctrl_map) = ctrl {
                 if let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce") {
-                    println!("Received nonce: {:?}", new_nonce);
+                    // println!("Received nonce: {:?}", new_nonce);
                     self.nonce = Some(new_nonce.to_string());
                 }
             }
