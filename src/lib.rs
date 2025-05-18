@@ -16,6 +16,13 @@ pub struct RndcClient {
     nonce: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct RndcResult {
+    pub result: bool,
+    pub text: Option<String>,
+    pub err: Option<String>,
+}
+
 impl RndcClient {
     pub fn new(server_url: &str, algorithm: &str, secret_key_b64: &str) -> Self {
         let secret_key = general_purpose::STANDARD
@@ -47,7 +54,7 @@ impl RndcClient {
     }
 
     fn rndc_handshake(&mut self) -> Result<(), String> {
-        let msg = RndcClient::build_message(
+        let msg = Self::build_message(
             "null",
             &self.algorithm,
             &self.secret_key,
@@ -66,12 +73,12 @@ impl RndcClient {
             Err(e) => return Err(format!("Failed to read packet: {}", e)),
         };
 
-        self.handle_packet(&res)?;
+        self.renew_nonce(&res)?;
 
         Ok(())
     }
 
-    pub fn rndc_command(&mut self, command: &str) -> Result<(), String> {
+    pub fn rndc_command(&mut self, command: &str) -> Result<RndcResult, String> {
         self.rndc_handshake()?;
 
         let msg = RndcClient::build_message(
@@ -91,12 +98,42 @@ impl RndcClient {
         let res = Self::read_packet(&mut self.stream.as_mut().unwrap())
             .map_err(|e| format!("Failed to read packet: {}", e))
             .unwrap();
-
-        self.handle_packet(&res)?;
-
         self.close_stream();
 
-        Ok(())
+        let resp = decoder::decode(&res)?;
+
+        if let Some(RNDCPayload::Table(data)) = resp.get("_data") {
+            dbg!("Received data: {:?}", data);
+
+            let result = data.get("result").and_then(|v| {
+                if let RNDCPayload::String(s) = v {
+                    Some(s == "0")
+                } else {
+                    None
+                }
+            });
+            let text = data.get("text").and_then(|v| {
+                if let RNDCPayload::String(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            });
+            let err = data.get("err").and_then(|v| {
+                if let RNDCPayload::String(s) = v {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            });
+
+            return Ok(RndcResult {
+                result: result.unwrap_or(false),
+                text,
+                err,
+            });
+        }
+        Err("Failed to parse status response".to_string())
     }
 
     fn build_message(
@@ -148,7 +185,7 @@ impl RndcClient {
         }
     }
 
-    fn handle_packet(&mut self, packet: &[u8]) -> Result<(), String> {
+    fn renew_nonce(&mut self, packet: &[u8]) -> Result<(), String> {
         let resp = decoder::decode(packet)?;
         if let Some(ctrl) = resp.get("_ctrl") {
             if let RNDCPayload::Table(ctrl_map) = ctrl {
@@ -161,10 +198,6 @@ impl RndcClient {
 
         if self.nonce.is_none() {
             return Err("RNDC nonce not received".to_string());
-        }
-
-        if let Some(data) = resp.get("_data") {
-            dbg!("Received data: {:?}", data);
         }
 
         Ok(())
