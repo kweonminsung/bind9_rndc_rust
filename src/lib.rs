@@ -8,13 +8,14 @@ use internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+#[derive(Debug, Clone)]
 pub struct RndcClient {
     server_url: String,
     algorithm: RNDCALG,
     secret_key: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RndcResult {
     pub result: bool,
     pub text: Option<String>,

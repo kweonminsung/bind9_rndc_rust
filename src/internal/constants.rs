@@ -11,7 +11,7 @@ pub const ISCCC_ALG_HMAC_SHA256: u8 = 163;
 pub const ISCCC_ALG_HMAC_SHA384: u8 = 164;
 pub const ISCCC_ALG_HMAC_SHA512: u8 = 165;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum RNDCALG {
     MD5,
     SHA1,
