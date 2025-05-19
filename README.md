@@ -13,8 +13,8 @@ the usual `rndc.conf` syntax.
 
 ```rust
     let client = RndcClient::new(
-        "server_url", // rndc server URL
-        "algorithm", // md5, sha1, sha224, sha256, sha384, sha512
+        "127.0.0.1:953", // rndc server URL
+        "sha256", // supported algorithms: md5, sha1, sha224, sha256, sha384, sha512
         "secret_key", // base64 encrypted secret_key
     );
 
