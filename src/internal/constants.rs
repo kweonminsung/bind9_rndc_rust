@@ -1,18 +1,18 @@
 // // Message types
-pub const MSGTYPE_STRING: u8 = 0;
-pub const MSGTYPE_BINARYDATA: u8 = 1;
-pub const MSGTYPE_TABLE: u8 = 2;
-pub const MSGTYPE_LIST: u8 = 3;
+pub(crate) const MSGTYPE_STRING: u8 = 0;
+pub(crate) const MSGTYPE_BINARYDATA: u8 = 1;
+pub(crate) const MSGTYPE_TABLE: u8 = 2;
+pub(crate) const MSGTYPE_LIST: u8 = 3;
 
 // pub const ISCCC_ALG_HMAC_MD5: u8 = 157;
-pub const ISCCC_ALG_HMAC_SHA1: u8 = 161;
-pub const ISCCC_ALG_HMAC_SHA224: u8 = 162;
-pub const ISCCC_ALG_HMAC_SHA256: u8 = 163;
-pub const ISCCC_ALG_HMAC_SHA384: u8 = 164;
-pub const ISCCC_ALG_HMAC_SHA512: u8 = 165;
+pub(crate) const ISCCC_ALG_HMAC_SHA1: u8 = 161;
+pub(crate) const ISCCC_ALG_HMAC_SHA224: u8 = 162;
+pub(crate) const ISCCC_ALG_HMAC_SHA256: u8 = 163;
+pub(crate) const ISCCC_ALG_HMAC_SHA384: u8 = 164;
+pub(crate) const ISCCC_ALG_HMAC_SHA512: u8 = 165;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum RNDCALG {
+pub(crate) enum RNDCALG {
     MD5,
     SHA1,
     SHA224,
@@ -22,7 +22,7 @@ pub enum RNDCALG {
 }
 
 impl RNDCALG {
-    pub fn from_string(alg: &str) -> Option<Self> {
+    pub(crate) fn from_string(alg: &str) -> Option<Self> {
         match alg {
             "md5" => Some(RNDCALG::MD5),
             "sha1" => Some(RNDCALG::SHA1),

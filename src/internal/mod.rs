@@ -1,5 +1,5 @@
-pub mod constants;
-pub mod utils;
+pub(crate) mod constants;
+pub(crate) mod utils;
 
-pub mod decoder;
-pub mod encoder;
+pub(crate) mod decoder;
+pub(crate) mod encoder;

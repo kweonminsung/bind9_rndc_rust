@@ -7,7 +7,7 @@ use super::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub enum RNDCPayload {
+pub(crate) enum RNDCPayload {
     String(String),
     Binary(Vec<u8>),
     Table(IndexMap<String, RNDCPayload>),
@@ -69,7 +69,7 @@ fn list_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<Vec<RNDCPayload>, String>
     Ok(list)
 }
 
-pub fn decode(buf: &[u8]) -> Result<IndexMap<String, RNDCPayload>, String> {
+pub(crate) fn decode(buf: &[u8]) -> Result<IndexMap<String, RNDCPayload>, String> {
     let mut cursor = Cursor::new(buf);
 
     let len = cursor.read_u32::<BigEndian>().map_err(|e| e.to_string())? as usize;
