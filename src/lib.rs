@@ -12,8 +12,6 @@ pub struct RndcClient {
     server_url: String,
     algorithm: RNDCALG,
     secret_key: Vec<u8>,
-    stream: Option<TcpStream>,
-    nonce: Option<String>,
 }
 
 #[derive(Debug)]
@@ -33,27 +31,16 @@ impl RndcClient {
             server_url: server_url.to_string(),
             algorithm: RNDCALG::from_string(algorithm).expect("Invalid RNDC algorithm"),
             secret_key,
-            stream: None,
-            nonce: None,
         }
     }
 
-    fn get_stream(&mut self) -> &mut TcpStream {
-        if self.stream.is_none() {
-            let stream =
-                TcpStream::connect(&self.server_url).expect("Failed to connect to RNDC server");
-            self.stream = Some(stream);
-        }
-        self.stream.as_mut().unwrap()
+    fn get_stream(&self) -> TcpStream {
+        let stream =
+            TcpStream::connect(&self.server_url).expect("Failed to connect to RNDC server");
+        stream
     }
 
-    fn close_stream(&mut self) {
-        if let Some(stream) = self.stream.take() {
-            let _ = stream.shutdown(std::net::Shutdown::Both);
-        }
-    }
-
-    fn rndc_handshake(&mut self) -> Result<(), String> {
+    fn rndc_handshake(&self) -> Result<(TcpStream, String), String> {
         let msg = Self::build_message(
             "null",
             &self.algorithm,
@@ -62,43 +49,41 @@ impl RndcClient {
             rand::random(),
         )?;
 
-        let stream = self.get_stream();
+        let mut stream = self.get_stream();
         match stream.write_all(&msg) {
             Ok(_) => {}
             Err(e) => return Err(format!("Failed to write to stream: {}", e)),
         }
 
-        let res = match RndcClient::read_packet(&mut self.stream.as_mut().unwrap()) {
+        let res = match RndcClient::read_packet(&mut stream) {
             Ok(res) => res,
             Err(e) => return Err(format!("Failed to read packet: {}", e)),
         };
 
-        self.renew_nonce(&res)?;
+        let nonce = self.get_nonce(&res)?;
 
-        Ok(())
+        Ok((stream, nonce))
     }
 
-    pub fn rndc_command(&mut self, command: &str) -> Result<RndcResult, String> {
-        self.rndc_handshake()?;
+    pub fn rndc_command(&self, command: &str) -> Result<RndcResult, String> {
+        let (mut stream, nonce) = self.rndc_handshake()?;
 
         let msg = RndcClient::build_message(
             command,
             &self.algorithm,
             &self.secret_key,
-            self.nonce.as_deref(),
+            Some(&nonce),
             rand::random(),
         )?;
 
-        let stream = self.get_stream();
         match stream.write_all(&msg) {
             Ok(_) => {}
             Err(e) => return Err(format!("Failed to write to stream: {}", e)),
         }
 
-        let res = Self::read_packet(&mut self.stream.as_mut().unwrap())
+        let res = Self::read_packet(&mut stream)
             .map_err(|e| format!("Failed to read packet: {}", e))
             .unwrap();
-        self.close_stream();
 
         let resp = decoder::decode(&res)?;
 
@@ -185,22 +170,17 @@ impl RndcClient {
         }
     }
 
-    fn renew_nonce(&mut self, packet: &[u8]) -> Result<(), String> {
+    fn get_nonce(&self, packet: &[u8]) -> Result<String, String> {
         let resp = decoder::decode(packet)?;
         if let Some(ctrl) = resp.get("_ctrl") {
             if let RNDCPayload::Table(ctrl_map) = ctrl {
                 if let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce") {
                     // println!("Received nonce: {:?}", new_nonce);
-                    self.nonce = Some(new_nonce.to_string());
+                    return Ok(new_nonce.to_string());
                 }
             }
         }
-
-        if self.nonce.is_none() {
-            return Err("RNDC nonce not received".to_string());
-        }
-
-        Ok(())
+        Err("RNDC nonce not received".to_string())
     }
 
     fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
