@@ -12,7 +12,7 @@ on the machine `localhost`. The key data is base64 encoded, as per
 the usual `rndc.conf` syntax.
 
 ```rust
-    let mut client = RndcClient::new(
+    let client = RndcClient::new(
         "server_url", // rndc server URL
         "algorithm", // md5, sha1, sha224, sha256, sha384, sha512
         "secret_key", // base64 encrypted secret_key
