@@ -43,7 +43,7 @@ impl RndcClient {
 
     fn close_stream(&self, stream: &TcpStream) -> Result<(), String> {
         match stream.shutdown(std::net::Shutdown::Both) {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => return Err(format!("Failed to close stream: {}", e)),
         }
     }
