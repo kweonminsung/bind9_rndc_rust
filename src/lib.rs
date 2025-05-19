@@ -41,6 +41,13 @@ impl RndcClient {
         stream
     }
 
+    fn close_stream(&self, stream: &TcpStream) -> Result<(), String> {
+        match stream.shutdown(std::net::Shutdown::Both) {
+            Ok(_) => {}
+            Err(e) => return Err(format!("Failed to close stream: {}", e)),
+        }
+    }
+
     fn rndc_handshake(&self) -> Result<(TcpStream, String), String> {
         let msg = Self::build_message(
             "null",
@@ -82,9 +89,12 @@ impl RndcClient {
             Err(e) => return Err(format!("Failed to write to stream: {}", e)),
         }
 
-        let res = Self::read_packet(&mut stream)
-            .map_err(|e| format!("Failed to read packet: {}", e))
-            .unwrap();
+        let res = match Self::read_packet(&mut stream) {
+            Ok(res) => res,
+            Err(e) => return Err(format!("Failed to read packet: {}", e)),
+        };
+
+        self.close_stream(&stream)?;
 
         let resp = decoder::decode(&res)?;
 
@@ -186,13 +196,19 @@ impl RndcClient {
 
     fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
         let mut header = [0u8; 8];
-        stream.read_exact(&mut header).unwrap();
+        match stream.read_exact(&mut header) {
+            Ok(_) => {}
+            Err(e) => return Err(format!("Failed to read header: {}", e)),
+        }
 
         let length_field = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) - 4;
         // let version = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
 
         let mut payload = vec![0u8; length_field as usize];
-        stream.read_exact(&mut payload).unwrap();
+        match stream.read_exact(&mut payload) {
+            Ok(_) => {}
+            Err(e) => return Err(format!("Failed to read payload: {}", e)),
+        }
 
         let mut full_packet = Vec::with_capacity(8 + payload.len());
         full_packet.extend_from_slice(&header);
