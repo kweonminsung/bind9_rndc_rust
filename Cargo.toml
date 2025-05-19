@@ -1,7 +1,7 @@
 [package]
 edition = "2024"
 name = "rndc"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["kweonminsung"]
 description = "BIND9 RNDC protocol implementation for Rust"
 repository = "https://github.com/kweonminsung/bind9_rndc_rust"
