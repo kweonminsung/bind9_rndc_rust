@@ -73,10 +73,9 @@ fn make_signature(
 
     let (sig_type, sig_b64, alg_code) = match algorithm {
         RNDCALG::MD5 => {
-            let mut mac = match Hmac::<md5::Md5>::new_from_slice(secret) {
-                Ok(m) => m,
-                Err(_) => return Err("Failed to create HMAC MD5 instance".to_string()),
-            };
+            let mut mac = Hmac::<md5::Md5>::new_from_slice(secret)
+                .map_err(|_| "Failed to create HMAC MD5 instance")?;
+
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
             let mut sig_b64 = general_purpose::STANDARD.encode(&digest);
@@ -86,10 +85,9 @@ fn make_signature(
             ("hmd5".to_string(), sig_b64, 157u8)
         }
         RNDCALG::SHA1 => {
-            let mut mac = match Hmac::<sha1::Sha1>::new_from_slice(secret) {
-                Ok(m) => m,
-                Err(_) => return Err("Failed to create HMAC SHA1 instance".to_string()),
-            };
+            let mut mac = Hmac::<sha1::Sha1>::new_from_slice(secret)
+                .map_err(|_| "Failed to create HMAC SHA1 instance")?;
+
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
             (
@@ -99,10 +97,9 @@ fn make_signature(
             )
         }
         RNDCALG::SHA224 => {
-            let mut mac = match Hmac::<sha2::Sha224>::new_from_slice(secret) {
-                Ok(m) => m,
-                Err(_) => return Err("Failed to create HMAC SHA224 instance".to_string()),
-            };
+            let mut mac = Hmac::<sha2::Sha224>::new_from_slice(secret)
+                .map_err(|_| "Failed to create HMAC SHA224 instance")?;
+
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
             (
@@ -112,10 +109,9 @@ fn make_signature(
             )
         }
         RNDCALG::SHA256 => {
-            let mut mac = match Hmac::<sha2::Sha256>::new_from_slice(secret) {
-                Ok(m) => m,
-                Err(_) => return Err("Failed to create HMAC SHA256 instance".to_string()),
-            };
+            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret)
+                .map_err(|_| "Failed to create HMAC SHA256 instance")?;
+
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
             (
@@ -125,10 +121,9 @@ fn make_signature(
             )
         }
         RNDCALG::SHA384 => {
-            let mut mac = match Hmac::<sha2::Sha384>::new_from_slice(secret) {
-                Ok(m) => m,
-                Err(_) => return Err("Failed to create HMAC SHA384 instance".to_string()),
-            };
+            let mut mac = Hmac::<sha2::Sha384>::new_from_slice(secret)
+                .map_err(|_| "Failed to create HMAC SHA384 instance")?;
+
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
             (
@@ -138,10 +133,9 @@ fn make_signature(
             )
         }
         RNDCALG::SHA512 => {
-            let mut mac = match Hmac::<sha2::Sha512>::new_from_slice(secret) {
-                Ok(m) => m,
-                Err(_) => return Err("Failed to create HMAC SHA512 instance".to_string()),
-            };
+            let mut mac = Hmac::<sha2::Sha512>::new_from_slice(secret)
+                .map_err(|_| "Failed to create HMAC SHA512 instance")?;
+
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
             (

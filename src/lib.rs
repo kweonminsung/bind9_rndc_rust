@@ -42,10 +42,11 @@ impl RndcClient {
     }
 
     fn close_stream(&self, stream: &TcpStream) -> Result<(), String> {
-        match stream.shutdown(std::net::Shutdown::Both) {
-            Ok(_) => Ok(()),
-            Err(e) => return Err(format!("Failed to close stream: {}", e)),
-        }
+        stream
+            .shutdown(std::net::Shutdown::Both)
+            .map_err(|e| format!("Failed to shutdown stream: {}", e))?;
+
+        Ok(())
     }
 
     fn rndc_handshake(&self) -> Result<(TcpStream, String), String> {
@@ -58,15 +59,12 @@ impl RndcClient {
         )?;
 
         let mut stream = self.get_stream();
-        match stream.write_all(&msg) {
-            Ok(_) => {}
-            Err(e) => return Err(format!("Failed to write to stream: {}", e)),
-        }
+        stream
+            .write_all(&msg)
+            .map_err(|e| format!("Failed to write to stream: {}", e))?;
 
-        let res = match RndcClient::read_packet(&mut stream) {
-            Ok(res) => res,
-            Err(e) => return Err(format!("Failed to read packet: {}", e)),
-        };
+        let res = RndcClient::read_packet(&mut stream)
+            .map_err(|e| format!("Failed to read packet: {}", e))?;
 
         let nonce = self.get_nonce(&res)?;
 
@@ -84,15 +82,12 @@ impl RndcClient {
             rand::random(),
         )?;
 
-        match stream.write_all(&msg) {
-            Ok(_) => {}
-            Err(e) => return Err(format!("Failed to write to stream: {}", e)),
-        }
+        stream
+            .write_all(&msg)
+            .map_err(|e| format!("Failed to write to stream: {}", e))?;
 
-        let res = match Self::read_packet(&mut stream) {
-            Ok(res) => res,
-            Err(e) => return Err(format!("Failed to read packet: {}", e)),
-        };
+        let res = RndcClient::read_packet(&mut stream)
+            .map_err(|e| format!("Failed to read packet: {}", e))?;
 
         self.close_stream(&stream)?;
 
@@ -196,19 +191,24 @@ impl RndcClient {
 
     fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
         let mut header = [0u8; 8];
-        match stream.read_exact(&mut header) {
-            Ok(_) => {}
-            Err(e) => return Err(format!("Failed to read header: {}", e)),
-        }
+        stream.read_exact(&mut header).map_err(|e| {
+            format!(
+                "Failed to read header: {} (expected length: {})",
+                e,
+                header.len()
+            )
+        })?;
 
         let length_field = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) - 4;
         // let version = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
 
         let mut payload = vec![0u8; length_field as usize];
-        match stream.read_exact(&mut payload) {
-            Ok(_) => {}
-            Err(e) => return Err(format!("Failed to read payload: {}", e)),
-        }
+        stream.read_exact(&mut payload).map_err(|e| {
+            format!(
+                "Failed to read payload: {} (expected length: {})",
+                e, length_field
+            )
+        })?;
 
         let mut full_packet = Vec::with_capacity(8 + payload.len());
         full_packet.extend_from_slice(&header);
