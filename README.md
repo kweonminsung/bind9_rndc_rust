@@ -47,7 +47,6 @@ the usual `rndc.conf` syntax.
         tcp clients: 0/150
         TCP high-water: 0
         server is up and running
-
     */
 ```
 
