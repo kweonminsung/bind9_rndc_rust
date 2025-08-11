@@ -1,11 +1,11 @@
 [package]
 edition = "2024"
 name = "rndc"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["kweonminsung"]
 description = "BIND9 RNDC protocol implementation for Rust"
 repository = "https://github.com/kweonminsung/bind9_rndc_rust"
-license = "MIT"
+license = "MPL-2.0"
 keywords = ["BIND9", "RNDC", "Rust"]
 
 [dependencies]
