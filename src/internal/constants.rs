@@ -12,7 +12,7 @@ pub(crate) const ISCCC_ALG_HMAC_SHA384: u8 = 164;
 pub(crate) const ISCCC_ALG_HMAC_SHA512: u8 = 165;
 
 #[derive(Debug, PartialEq, Clone)]
-pub(crate) enum RNDCALG {
+pub(crate) enum RndcAlg {
     MD5,
     SHA1,
     SHA224,
@@ -21,15 +21,15 @@ pub(crate) enum RNDCALG {
     SHA512,
 }
 
-impl RNDCALG {
+impl RndcAlg {
     pub(crate) fn from_string(alg: &str) -> Option<Self> {
         match alg {
-            "md5" => Some(RNDCALG::MD5),
-            "sha1" => Some(RNDCALG::SHA1),
-            "sha224" => Some(RNDCALG::SHA224),
-            "sha256" => Some(RNDCALG::SHA256),
-            "sha384" => Some(RNDCALG::SHA384),
-            "sha512" => Some(RNDCALG::SHA512),
+            "md5" => Some(RndcAlg::MD5),
+            "sha1" => Some(RndcAlg::SHA1),
+            "sha224" => Some(RndcAlg::SHA224),
+            "sha256" => Some(RndcAlg::SHA256),
+            "sha384" => Some(RndcAlg::SHA384),
+            "sha512" => Some(RndcAlg::SHA512),
             _ => None,
         }
     }

@@ -3,7 +3,7 @@ mod internal;
 use base64::Engine;
 use base64::engine::general_purpose;
 use indexmap::IndexMap;
-use internal::constants::RNDCALG;
+use internal::constants::RndcAlg;
 use internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -11,7 +11,7 @@ use std::net::TcpStream;
 #[derive(Debug, Clone)]
 pub struct RndcClient {
     server_url: String,
-    algorithm: RNDCALG,
+    algorithm: RndcAlg,
     secret_key: Vec<u8>,
 }
 
@@ -30,15 +30,13 @@ impl RndcClient {
 
         RndcClient {
             server_url: server_url.to_string(),
-            algorithm: RNDCALG::from_string(algorithm).expect("Invalid RNDC algorithm"),
+            algorithm: RndcAlg::from_string(algorithm).expect("Invalid RNDC algorithm"),
             secret_key,
         }
     }
 
     fn get_stream(&self) -> TcpStream {
-        let stream =
-            TcpStream::connect(&self.server_url).expect("Failed to connect to RNDC server");
-        stream
+        TcpStream::connect(&self.server_url).expect("Failed to connect to RNDC server")
     }
 
     fn close_stream(&self, stream: &TcpStream) -> Result<(), String> {
@@ -129,7 +127,7 @@ impl RndcClient {
 
     fn build_message(
         command: &str,
-        algorithm: &RNDCALG,
+        algorithm: &RndcAlg,
         secret: &[u8],
         nonce: Option<&str>,
         ser: u32,
@@ -178,12 +176,16 @@ impl RndcClient {
 
     fn get_nonce(&self, packet: &[u8]) -> Result<String, String> {
         let resp = decoder::decode(packet)?;
-        if let Some(ctrl) = resp.get("_ctrl") {
-            if let RNDCPayload::Table(ctrl_map) = ctrl {
-                if let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce") {
-                    // println!("Received nonce: {:?}", new_nonce);
-                    return Ok(new_nonce.to_string());
-                }
+        if let Some(RNDCPayload::Table(ctrl_map)) = resp.get("_ctrl").and_then(|ctrl| {
+            if let RNDCPayload::Table(map) = ctrl {
+                Some(RNDCPayload::Table(map.clone()))
+            } else {
+                None
+            }
+        }) {
+            if let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce") {
+                // println!("Received nonce: {:?}", new_nonce);
+                return Ok(new_nonce.to_string());
             }
         }
         Err("RNDC nonce not received".to_string())

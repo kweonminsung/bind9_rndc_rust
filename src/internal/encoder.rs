@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use super::constants::{
     ISCCC_ALG_HMAC_SHA1, ISCCC_ALG_HMAC_SHA224, ISCCC_ALG_HMAC_SHA256, ISCCC_ALG_HMAC_SHA384,
-    ISCCC_ALG_HMAC_SHA512, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE, RNDCALG,
+    ISCCC_ALG_HMAC_SHA512, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE, RndcAlg,
 };
 
 #[allow(dead_code)]
@@ -65,26 +65,26 @@ fn table_towire(val: &IndexMap<String, RNDCValue>, no_header: bool) -> Vec<u8> {
 }
 
 fn make_signature(
-    algorithm: &RNDCALG,
+    algorithm: &RndcAlg,
     secret: &[u8],
     message_body: &IndexMap<String, RNDCValue>,
 ) -> Result<RNDCValue, String> {
     let databuf = table_towire(message_body, true);
 
     let (sig_type, sig_b64, alg_code) = match algorithm {
-        RNDCALG::MD5 => {
+        RndcAlg::MD5 => {
             let mut mac = Hmac::<md5::Md5>::new_from_slice(secret)
                 .map_err(|_| "Failed to create HMAC MD5 instance")?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
-            let mut sig_b64 = general_purpose::STANDARD.encode(&digest);
+            let mut sig_b64 = general_purpose::STANDARD.encode(digest);
 
             // no padding on hmd5
             sig_b64 = sig_b64.trim_end_matches('=').to_string();
             ("hmd5".to_string(), sig_b64, 157u8)
         }
-        RNDCALG::SHA1 => {
+        RndcAlg::SHA1 => {
             let mut mac = Hmac::<sha1::Sha1>::new_from_slice(secret)
                 .map_err(|_| "Failed to create HMAC SHA1 instance")?;
 
@@ -92,11 +92,11 @@ fn make_signature(
             let digest = mac.finalize().into_bytes();
             (
                 "hsha".to_string(),
-                general_purpose::STANDARD.encode(&digest),
+                general_purpose::STANDARD.encode(digest),
                 ISCCC_ALG_HMAC_SHA1,
             )
         }
-        RNDCALG::SHA224 => {
+        RndcAlg::SHA224 => {
             let mut mac = Hmac::<sha2::Sha224>::new_from_slice(secret)
                 .map_err(|_| "Failed to create HMAC SHA224 instance")?;
 
@@ -104,11 +104,11 @@ fn make_signature(
             let digest = mac.finalize().into_bytes();
             (
                 "hsha".to_string(),
-                general_purpose::STANDARD.encode(&digest),
+                general_purpose::STANDARD.encode(digest),
                 ISCCC_ALG_HMAC_SHA224,
             )
         }
-        RNDCALG::SHA256 => {
+        RndcAlg::SHA256 => {
             let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret)
                 .map_err(|_| "Failed to create HMAC SHA256 instance")?;
 
@@ -116,11 +116,11 @@ fn make_signature(
             let digest = mac.finalize().into_bytes();
             (
                 "hsha".to_string(),
-                general_purpose::STANDARD.encode(&digest),
+                general_purpose::STANDARD.encode(digest),
                 ISCCC_ALG_HMAC_SHA256,
             )
         }
-        RNDCALG::SHA384 => {
+        RndcAlg::SHA384 => {
             let mut mac = Hmac::<sha2::Sha384>::new_from_slice(secret)
                 .map_err(|_| "Failed to create HMAC SHA384 instance")?;
 
@@ -128,11 +128,11 @@ fn make_signature(
             let digest = mac.finalize().into_bytes();
             (
                 "hsha".to_string(),
-                general_purpose::STANDARD.encode(&digest),
+                general_purpose::STANDARD.encode(digest),
                 ISCCC_ALG_HMAC_SHA384,
             )
         }
-        RNDCALG::SHA512 => {
+        RndcAlg::SHA512 => {
             let mut mac = Hmac::<sha2::Sha512>::new_from_slice(secret)
                 .map_err(|_| "Failed to create HMAC SHA512 instance")?;
 
@@ -140,7 +140,7 @@ fn make_signature(
             let digest = mac.finalize().into_bytes();
             (
                 "hsha".to_string(),
-                general_purpose::STANDARD.encode(&digest),
+                general_purpose::STANDARD.encode(digest),
                 ISCCC_ALG_HMAC_SHA512,
             )
         }
@@ -163,7 +163,7 @@ fn make_signature(
 
 pub(crate) fn encode(
     obj: &mut IndexMap<String, RNDCValue>,
-    algorithm: &RNDCALG,
+    algorithm: &RndcAlg,
     secret: &[u8],
 ) -> Result<Vec<u8>, String> {
     obj.shift_remove("_auth");
