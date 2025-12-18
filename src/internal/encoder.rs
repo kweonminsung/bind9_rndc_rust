@@ -3,8 +3,9 @@ use hmac::{Hmac, Mac};
 use indexmap::IndexMap;
 
 use super::constants::{
-    ISCCC_ALG_HMAC_SHA1, ISCCC_ALG_HMAC_SHA224, ISCCC_ALG_HMAC_SHA256, ISCCC_ALG_HMAC_SHA384,
-    ISCCC_ALG_HMAC_SHA512, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE, RndcAlg,
+    ISCCC_ALG_HMAC_MD5, ISCCC_ALG_HMAC_SHA1, ISCCC_ALG_HMAC_SHA224, ISCCC_ALG_HMAC_SHA256,
+    ISCCC_ALG_HMAC_SHA384, ISCCC_ALG_HMAC_SHA512, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE,
+    RndcAlg,
 };
 
 #[allow(dead_code)]
@@ -82,7 +83,7 @@ fn make_signature(
 
             // no padding on hmd5
             sig_b64 = sig_b64.trim_end_matches('=').to_string();
-            ("hmd5".to_string(), sig_b64, 157u8)
+            ("hmd5".to_string(), sig_b64, ISCCC_ALG_HMAC_MD5)
         }
         RndcAlg::SHA1 => {
             let mut mac = Hmac::<sha1::Sha1>::new_from_slice(secret)

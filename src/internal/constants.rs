@@ -4,7 +4,7 @@ pub(crate) const MSGTYPE_BINARYDATA: u8 = 1;
 pub(crate) const MSGTYPE_TABLE: u8 = 2;
 pub(crate) const MSGTYPE_LIST: u8 = 3;
 
-// pub const ISCCC_ALG_HMAC_MD5: u8 = 157;
+pub(crate) const ISCCC_ALG_HMAC_MD5: u8 = 157;
 pub(crate) const ISCCC_ALG_HMAC_SHA1: u8 = 161;
 pub(crate) const ISCCC_ALG_HMAC_SHA224: u8 = 162;
 pub(crate) const ISCCC_ALG_HMAC_SHA256: u8 = 163;

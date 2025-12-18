@@ -1,6 +1,6 @@
-use std::io::{Cursor, Read};
 use byteorder::{BigEndian, ReadBytesExt};
 use indexmap::IndexMap;
+use std::io::{Cursor, Read};
 
 use crate::internal::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE};
 
