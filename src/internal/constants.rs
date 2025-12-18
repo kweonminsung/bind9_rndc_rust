@@ -1,4 +1,4 @@
-// // Message types
+// Message types
 pub(crate) const MSGTYPE_STRING: u8 = 0;
 pub(crate) const MSGTYPE_BINARYDATA: u8 = 1;
 pub(crate) const MSGTYPE_TABLE: u8 = 2;

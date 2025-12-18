@@ -1,9 +1,8 @@
 use std::io::{Cursor, Read};
-
 use byteorder::{BigEndian, ReadBytesExt};
 use indexmap::IndexMap;
 
-use super::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE};
+use crate::internal::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]

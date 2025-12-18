@@ -3,10 +3,11 @@ mod internal;
 use base64::Engine;
 use base64::engine::general_purpose;
 use indexmap::IndexMap;
-use internal::constants::RndcAlg;
-use internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils};
 use std::io::{Read, Write};
 use std::net::TcpStream;
+
+use crate::internal::constants::RndcAlg;
+use crate::internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils};
 
 #[derive(Debug, Clone)]
 pub struct RndcClient {
