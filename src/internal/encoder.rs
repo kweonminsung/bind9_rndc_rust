@@ -7,6 +7,7 @@ use super::constants::{
     ISCCC_ALG_HMAC_SHA384, ISCCC_ALG_HMAC_SHA512, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_TABLE,
     RndcAlg,
 };
+use crate::error::RndcError;
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -69,13 +70,14 @@ fn make_signature(
     algorithm: &RndcAlg,
     secret: &[u8],
     message_body: &IndexMap<String, RNDCValue>,
-) -> Result<RNDCValue, String> {
+) -> Result<RNDCValue, RndcError> {
     let databuf = table_towire(message_body, true);
 
     let (sig_type, sig_b64, alg_code) = match algorithm {
         RndcAlg::MD5 => {
-            let mut mac = Hmac::<md5::Md5>::new_from_slice(secret)
-                .map_err(|_| "Failed to create HMAC MD5 instance")?;
+            let mut mac = Hmac::<md5::Md5>::new_from_slice(secret).map_err(|_| {
+                RndcError::EncodingError("Failed to create HMAC MD5 instance".to_string())
+            })?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
@@ -86,8 +88,9 @@ fn make_signature(
             ("hmd5".to_string(), sig_b64, ISCCC_ALG_HMAC_MD5)
         }
         RndcAlg::SHA1 => {
-            let mut mac = Hmac::<sha1::Sha1>::new_from_slice(secret)
-                .map_err(|_| "Failed to create HMAC SHA1 instance")?;
+            let mut mac = Hmac::<sha1::Sha1>::new_from_slice(secret).map_err(|_| {
+                RndcError::EncodingError("Failed to create HMAC SHA1 instance".to_string())
+            })?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
@@ -98,8 +101,9 @@ fn make_signature(
             )
         }
         RndcAlg::SHA224 => {
-            let mut mac = Hmac::<sha2::Sha224>::new_from_slice(secret)
-                .map_err(|_| "Failed to create HMAC SHA224 instance")?;
+            let mut mac = Hmac::<sha2::Sha224>::new_from_slice(secret).map_err(|_| {
+                RndcError::EncodingError("Failed to create HMAC SHA224 instance".to_string())
+            })?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
@@ -110,8 +114,9 @@ fn make_signature(
             )
         }
         RndcAlg::SHA256 => {
-            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret)
-                .map_err(|_| "Failed to create HMAC SHA256 instance")?;
+            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret).map_err(|_| {
+                RndcError::EncodingError("Failed to create HMAC SHA256 instance".to_string())
+            })?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
@@ -122,8 +127,9 @@ fn make_signature(
             )
         }
         RndcAlg::SHA384 => {
-            let mut mac = Hmac::<sha2::Sha384>::new_from_slice(secret)
-                .map_err(|_| "Failed to create HMAC SHA384 instance")?;
+            let mut mac = Hmac::<sha2::Sha384>::new_from_slice(secret).map_err(|_| {
+                RndcError::EncodingError("Failed to create HMAC SHA384 instance".to_string())
+            })?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
@@ -134,8 +140,9 @@ fn make_signature(
             )
         }
         RndcAlg::SHA512 => {
-            let mut mac = Hmac::<sha2::Sha512>::new_from_slice(secret)
-                .map_err(|_| "Failed to create HMAC SHA512 instance")?;
+            let mut mac = Hmac::<sha2::Sha512>::new_from_slice(secret).map_err(|_| {
+                RndcError::EncodingError("Failed to create HMAC SHA512 instance".to_string())
+            })?;
 
             mac.update(&databuf);
             let digest = mac.finalize().into_bytes();
@@ -166,7 +173,7 @@ pub(crate) fn encode(
     obj: &mut IndexMap<String, RNDCValue>,
     algorithm: &RndcAlg,
     secret: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, RndcError> {
     obj.shift_remove("_auth");
 
     let databuf = table_towire(obj, true);
