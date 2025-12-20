@@ -37,8 +37,9 @@ impl RndcClient {
         })
     }
 
-    fn get_stream(&self) -> TcpStream {
-        TcpStream::connect(&self.server_url).expect("Failed to connect to RNDC server")
+    fn get_stream(&self) -> Result<TcpStream, RndcError> {
+        TcpStream::connect(&self.server_url)
+            .map_err(|e| RndcError::NetworkError(format!("Failed to connect to server: {}", e)))
     }
 
     fn close_stream(&self, stream: &TcpStream) -> Result<(), RndcError> {
@@ -58,7 +59,7 @@ impl RndcClient {
             rand::random(),
         )?;
 
-        let mut stream = self.get_stream();
+        let mut stream = self.get_stream()?;
         stream
             .write_all(&msg)
             .map_err(|e| RndcError::NetworkError(format!("Failed to write to stream: {}", e)))?;
