@@ -3,20 +3,33 @@ name: CI
 on:
   pull_request:
     branches: ["main", "develop"]
+    types:
+      - closed
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
       - name: Build
-        run: cargo build --verbose
+        run: docker build -t bind9-test ./docker
 
-      # - name: Run tests
-      #   run: cargo test --verbose -- --test-threads=1
+      - name: Start bind9 container
+        run: docker run -d -p 953:953 --name bind9 bind9-test
+
+      - name: Delay for bind9 to start
+        run: sleep 3
+
+      - name: Run tests
+        run: cargo test --test e2e_rndc
+
+      - name: Stop bind9 container
+        run: docker rm -f bind9
