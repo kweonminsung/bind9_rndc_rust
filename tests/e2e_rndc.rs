@@ -2,7 +2,7 @@ use rndc::RndcClient;
 
 fn get_test_client() -> RndcClient {
     let server_url = "127.0.0.1:953".to_string();
-    let algorithm = "sha256";
+    let algorithm = "hmac-sha256";
     let secret_key = "YmluZGl6cg==".to_string(); // "test" in base64
 
     RndcClient::new(&server_url, algorithm, &secret_key).unwrap()
