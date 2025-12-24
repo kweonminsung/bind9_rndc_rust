@@ -1,7 +1,8 @@
-use std::io::{Cursor, Read};
 use byteorder::{BigEndian, ReadBytesExt};
 use indexmap::IndexMap;
+use std::io::{Cursor, Read};
 
+use crate::error::RndcError;
 use crate::internal::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE};
 
 #[allow(dead_code)]
@@ -13,9 +14,11 @@ pub(crate) enum RNDCPayload {
     List(Vec<RNDCPayload>),
 }
 
-fn binary_fromwire(cursor: &mut Cursor<&[u8]>, len: usize) -> Result<RNDCPayload, String> {
+fn binary_fromwire(cursor: &mut Cursor<&[u8]>, len: usize) -> Result<RNDCPayload, RndcError> {
     let mut buf = vec![0u8; len];
-    cursor.read_exact(&mut buf).map_err(|e| e.to_string())?;
+    cursor
+        .read_exact(&mut buf)
+        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
 
     match String::from_utf8(buf.clone()) {
         Ok(s) => Ok(RNDCPayload::String(s)),
@@ -23,16 +26,24 @@ fn binary_fromwire(cursor: &mut Cursor<&[u8]>, len: usize) -> Result<RNDCPayload
     }
 }
 
-fn key_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<String, String> {
-    let len = cursor.read_u8().map_err(|e| e.to_string())? as usize;
+fn key_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<String, RndcError> {
+    let len = cursor
+        .read_u8()
+        .map_err(|e| RndcError::DecodingError(e.to_string()))? as usize;
     let mut buf = vec![0u8; len];
-    cursor.read_exact(&mut buf).map_err(|e| e.to_string())?;
-    String::from_utf8(buf).map_err(|e| e.to_string())
+    cursor
+        .read_exact(&mut buf)
+        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
+    String::from_utf8(buf).map_err(|e| RndcError::DecodingError(e.to_string()))
 }
 
-fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, String> {
-    let typ = cursor.read_u8().map_err(|e| e.to_string())?;
-    let len = cursor.read_u32::<BigEndian>().map_err(|e| e.to_string())? as usize;
+fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, RndcError> {
+    let typ = cursor
+        .read_u8()
+        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
+    let len = cursor
+        .read_u32::<BigEndian>()
+        .map_err(|e| RndcError::DecodingError(e.to_string()))? as usize;
     let pos = cursor.position() as usize;
 
     let slice = &cursor.get_ref()[pos..pos + len];
@@ -42,14 +53,17 @@ fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, String> {
         MSGTYPE_STRING | MSGTYPE_BINARYDATA => binary_fromwire(&mut sub_cursor, len),
         MSGTYPE_TABLE => table_fromwire(&mut sub_cursor).map(RNDCPayload::Table),
         MSGTYPE_LIST => list_fromwire(&mut sub_cursor).map(RNDCPayload::List),
-        _ => Err(format!("Unknown RNDC message type: {}", typ)),
+        _ => Err(RndcError::DecodingError(format!(
+            "Unknown RNDC message type: {}",
+            typ
+        ))),
     };
 
     cursor.set_position((pos + len) as u64);
     result
 }
 
-fn table_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<IndexMap<String, RNDCPayload>, String> {
+fn table_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
     let mut map = IndexMap::new();
     while (cursor.position() as usize) < cursor.get_ref().len() {
         let key = key_fromwire(cursor)?;
@@ -59,7 +73,7 @@ fn table_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<IndexMap<String, RNDCPay
     Ok(map)
 }
 
-fn list_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<Vec<RNDCPayload>, String> {
+fn list_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<Vec<RNDCPayload>, RndcError> {
     let mut list = Vec::new();
     while (cursor.position() as usize) < cursor.get_ref().len() {
         let value = value_fromwire(cursor)?;
@@ -68,17 +82,26 @@ fn list_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<Vec<RNDCPayload>, String>
     Ok(list)
 }
 
-pub(crate) fn decode(buf: &[u8]) -> Result<IndexMap<String, RNDCPayload>, String> {
+pub(crate) fn decode(buf: &[u8]) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
     let mut cursor = Cursor::new(buf);
 
-    let len = cursor.read_u32::<BigEndian>().map_err(|e| e.to_string())? as usize;
+    let len = cursor
+        .read_u32::<BigEndian>()
+        .map_err(|e| RndcError::DecodingError(e.to_string()))? as usize;
     if len != buf.len() - 4 {
-        return Err("RNDC buffer length mismatch".to_string());
+        return Err(RndcError::DecodingError(
+            "RNDC buffer length mismatch".to_string(),
+        ));
     }
 
-    let version = cursor.read_u32::<BigEndian>().map_err(|e| e.to_string())?;
+    let version = cursor
+        .read_u32::<BigEndian>()
+        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
     if version != 1 {
-        return Err(format!("Unknown RNDC protocol version: {}", version));
+        return Err(RndcError::DecodingError(format!(
+            "Unknown RNDC protocol version: {}",
+            version
+        )));
     }
 
     let res = table_fromwire(&mut cursor)?;

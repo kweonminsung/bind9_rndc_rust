@@ -1,3 +1,4 @@
+mod error;
 mod internal;
 
 use base64::Engine;
@@ -6,15 +7,9 @@ use indexmap::IndexMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
+pub use crate::error::RndcError;
 use crate::internal::constants::RndcAlg;
 use crate::internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils};
-
-#[derive(Debug, Clone)]
-pub struct RndcClient {
-    server_url: String,
-    algorithm: RndcAlg,
-    secret_key: Vec<u8>,
-}
 
 #[derive(Debug, Clone)]
 pub struct RndcResult {
@@ -23,32 +18,39 @@ pub struct RndcResult {
     pub err: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RndcClient {
+    server_url: String,
+    algorithm: RndcAlg,
+    secret_key: Vec<u8>,
+}
 impl RndcClient {
-    pub fn new(server_url: &str, algorithm: &str, secret_key_b64: &str) -> Self {
+    pub fn new(server_url: &str, algorithm: &str, secret_key_b64: &str) -> Result<Self, RndcError> {
         let secret_key = general_purpose::STANDARD
             .decode(secret_key_b64.as_bytes())
-            .expect("Invalid base64 RNDC_SECRET_KEY");
+            .map_err(|e| RndcError::Base64DecodeError(e.to_string()))?;
 
-        RndcClient {
+        Ok(RndcClient {
             server_url: server_url.to_string(),
-            algorithm: RndcAlg::from_string(algorithm).expect("Invalid RNDC algorithm"),
+            algorithm: RndcAlg::from_string(algorithm)?,
             secret_key,
-        }
+        })
     }
 
-    fn get_stream(&self) -> TcpStream {
-        TcpStream::connect(&self.server_url).expect("Failed to connect to RNDC server")
+    fn get_stream(&self) -> Result<TcpStream, RndcError> {
+        TcpStream::connect(&self.server_url)
+            .map_err(|e| RndcError::NetworkError(format!("Failed to connect to server: {}", e)))
     }
 
-    fn close_stream(&self, stream: &TcpStream) -> Result<(), String> {
+    fn close_stream(&self, stream: &TcpStream) -> Result<(), RndcError> {
         stream
             .shutdown(std::net::Shutdown::Both)
-            .map_err(|e| format!("Failed to shutdown stream: {}", e))?;
+            .map_err(|e| RndcError::NetworkError(format!("Failed to shutdown stream: {}", e)))?;
 
         Ok(())
     }
 
-    fn rndc_handshake(&self) -> Result<(TcpStream, String), String> {
+    fn rndc_handshake(&self) -> Result<(TcpStream, String), RndcError> {
         let msg = Self::build_message(
             "null",
             &self.algorithm,
@@ -57,20 +59,19 @@ impl RndcClient {
             rand::random(),
         )?;
 
-        let mut stream = self.get_stream();
+        let mut stream = self.get_stream()?;
         stream
             .write_all(&msg)
-            .map_err(|e| format!("Failed to write to stream: {}", e))?;
+            .map_err(|e| RndcError::NetworkError(format!("Failed to write to stream: {}", e)))?;
 
-        let res = RndcClient::read_packet(&mut stream)
-            .map_err(|e| format!("Failed to read packet: {}", e))?;
+        let res = RndcClient::read_packet(&mut stream)?;
 
         let nonce = self.get_nonce(&res)?;
 
         Ok((stream, nonce))
     }
 
-    pub fn rndc_command(&self, command: &str) -> Result<RndcResult, String> {
+    pub fn rndc_command(&self, command: &str) -> Result<RndcResult, RndcError> {
         let (mut stream, nonce) = self.rndc_handshake()?;
 
         let msg = RndcClient::build_message(
@@ -83,10 +84,9 @@ impl RndcClient {
 
         stream
             .write_all(&msg)
-            .map_err(|e| format!("Failed to write to stream: {}", e))?;
+            .map_err(|e| RndcError::NetworkError(format!("Failed to write to stream: {}", e)))?;
 
-        let res = RndcClient::read_packet(&mut stream)
-            .map_err(|e| format!("Failed to read packet: {}", e))?;
+        let res = RndcClient::read_packet(&mut stream)?;
 
         self.close_stream(&stream)?;
 
@@ -123,7 +123,9 @@ impl RndcClient {
                 err,
             });
         }
-        Err("Failed to parse status response".to_string())
+        Err(RndcError::DecodingError(
+            "Failed to parse status response".to_string(),
+        ))
     }
 
     fn build_message(
@@ -132,7 +134,7 @@ impl RndcClient {
         secret: &[u8],
         nonce: Option<&str>,
         ser: u32,
-    ) -> Result<Vec<u8>, String> {
+    ) -> Result<Vec<u8>, RndcError> {
         let now = utils::get_timestamp();
         let exp = now + 60;
 
@@ -169,13 +171,10 @@ impl RndcClient {
         message_body.insert("_ctrl".to_string(), RNDCValue::Table(ctrl_map));
         message_body.insert("_data".to_string(), RNDCValue::Table(data_map));
 
-        match encoder::encode(&mut message_body, algorithm, secret) {
-            Ok(buf) => Ok(buf),
-            Err(e) => Err(format!("Failed to encode message: {}", e)),
-        }
+        encoder::encode(&mut message_body, algorithm, secret)
     }
 
-    fn get_nonce(&self, packet: &[u8]) -> Result<String, String> {
+    fn get_nonce(&self, packet: &[u8]) -> Result<String, RndcError> {
         let resp = decoder::decode(packet)?;
         if let Some(RNDCPayload::Table(ctrl_map)) = resp.get("_ctrl").and_then(|ctrl| {
             if let RNDCPayload::Table(map) = ctrl {
@@ -189,17 +188,19 @@ impl RndcClient {
                 return Ok(new_nonce.to_string());
             }
         }
-        Err("RNDC nonce not received".to_string())
+        Err(RndcError::DecodingError(
+            "RNDC nonce not received".to_string(),
+        ))
     }
 
-    fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
+    fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, RndcError> {
         let mut header = [0u8; 8];
         stream.read_exact(&mut header).map_err(|e| {
-            format!(
+            RndcError::NetworkError(format!(
                 "Failed to read header: {} (expected length: {})",
                 e,
                 header.len()
-            )
+            ))
         })?;
 
         let length_field = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) - 4;
@@ -207,10 +208,10 @@ impl RndcClient {
 
         let mut payload = vec![0u8; length_field as usize];
         stream.read_exact(&mut payload).map_err(|e| {
-            format!(
+            RndcError::NetworkError(format!(
                 "Failed to read payload: {} (expected length: {})",
                 e, length_field
-            )
+            ))
         })?;
 
         let mut full_packet = Vec::with_capacity(8 + payload.len());

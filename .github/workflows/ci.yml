@@ -3,20 +3,42 @@ name: CI
 on:
   pull_request:
     branches: ["main", "develop"]
+    types:
+      - closed
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
       - name: Build
-        run: cargo build --verbose
+        run: docker build -t bind9-test ./docker
 
-      # - name: Run tests
-      #   run: cargo test --verbose -- --test-threads=1
+      - name: Start bind9 container
+        run: docker run -d -p 953:953 --name bind9 bind9-test
+
+      - name: Wait for bind9 (rndc port)
+        run: |
+          for i in {1..10}; do
+            if nc -z 127.0.0.1 953; then
+              echo "bind9 is ready"
+              exit 0
+            fi
+            echo "waiting for bind9..."
+            sleep 1
+          done
+          echo "bind9 did not start in time"
+          docker logs bind9
+          exit 1
+
+      - name: Run tests
+        run: cargo test -- --ignored
+
+      - name: Stop bind9 container
+        run: docker rm -f bind9
