@@ -9,6 +9,7 @@ fn get_test_client() -> RndcClient {
 }
 
 #[test]
+#[ignore]
 fn e2e_rndc_status() {
     let client = get_test_client();
     let response = client.rndc_command("status").unwrap();
@@ -24,6 +25,7 @@ fn e2e_rndc_status() {
 }
 
 #[test]
+#[ignore]
 fn e2e_rndc_reload() {
     let client = get_test_client();
     let response = client.rndc_command("reload").unwrap();

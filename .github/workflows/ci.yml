@@ -27,7 +27,7 @@ jobs:
         run: sleep 3
 
       - name: Run tests
-        run: cargo test --test e2e_rndc
+        run: cargo test -- --ignored
 
       - name: Stop bind9 container
         run: docker rm -f bind9
