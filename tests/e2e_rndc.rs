@@ -35,7 +35,7 @@ fn e2e_rndc_reload() {
         "rndc command failed: {:?}", &response
     );
     assert!(
-        response.text.is_some() && response.text.as_ref().unwrap().contains("reloaded"),
+        response.text.is_some() && response.text.as_ref().unwrap().contains("server reload successful"),
         "rndc reload response text is missing or incorrect"
     );
 }
