@@ -2,32 +2,45 @@
 
 A synchronous Rust client for BIND9's RNDC management protocol.
 
-## Usage
+## Example usage
 
-Set `RNDC_SECRET` to the base64-encoded secret from your BIND RNDC key configuration.
-The address and algorithm must match the server configuration.
+The example below sends `reload` and `status` commands to the default RNDC port
+on `localhost`. Pass the server address, HMAC algorithm, and base64-encoded secret
+directly to `RndcClient::new`, using values from your BIND RNDC key configuration.
 
 ```no_run
 use rndc::RndcClient;
-use std::{error::Error, time::Duration};
+use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let secret = std::env::var("RNDC_SECRET")?;
-    let client = RndcClient::new("127.0.0.1:953", "sha256", &secret)?
-        .with_timeout(Duration::from_secs(10))?;
+    let client = RndcClient::new(
+        "127.0.0.1:953", // RNDC server address
+        "sha256",       // HMAC algorithm
+        "YmluZGl6cg==",  // Public Docker test key; replace with your server's base64-encoded secret
+    )?;
 
-    let response = client.rndc_command("status")?;
-    if !response.result {
-        return Err(response.err.unwrap_or_else(|| "RNDC command failed".into()).into());
-    }
-    if let Some(text) = response.text {
-        println!("{text}");
+    for command in ["reload", "status"] {
+        let response = client.rndc_command(command)?;
+        if !response.result {
+            return Err(response.err.unwrap_or_else(|| "RNDC command failed".into()).into());
+        }
+        if let Some(text) = response.text {
+            println!("{text}");
+        }
     }
     Ok(())
 }
 ```
 
-Pass another command, such as `"reload"`, to `rndc_command` as needed.
+Example output (`status` details depend on the server):
+
+```text
+server reload successful
+version: BIND ...
+...
+server is up and running
+```
+
 Transport, auth, and decoding failures return `Err(RndcError)`; a command rejected
 by BIND returns `Ok(RndcResult)` with `result == false` and optional `err` text.
 
@@ -75,9 +88,8 @@ docker exec rndc-bind-test rndc -s 127.0.0.1 -k /etc/bind/rndc.key status
 cargo test --locked --test rndc -- --ignored
 ```
 
-This server uses the public test secret `YmluZGl6cg==` with `sha256`; use that value
-for `RNDC_SECRET` when running the usage example against it. Remove the server
-after testing:
+This server uses the same public test secret `YmluZGl6cg==` and `sha256` algorithm
+as the usage example. Remove the server after testing:
 
 ```sh
 docker rm -f rndc-bind-test
