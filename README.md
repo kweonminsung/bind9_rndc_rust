@@ -5,18 +5,21 @@ A synchronous Rust client for BIND9's RNDC management protocol.
 ## Example usage
 
 The example below sends `reload` and `status` commands to the default RNDC port
-on `localhost`. Pass the server address, HMAC algorithm, and base64-encoded secret
-directly to `RndcClient::new`, using values from your BIND RNDC key configuration.
+on `localhost`. Pass the server address, HMAC algorithm, and base64-encoded shared
+key (`tsig_key_b64`) directly to `RndcClient::new`, using values from your BIND RNDC
+key configuration.
 
 ```no_run
 use rndc::RndcClient;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // Public Docker test key; replace with your server's base64-encoded shared key.
+    let tsig_key_b64 = "YmluZGl6cg==";
     let client = RndcClient::new(
         "127.0.0.1:953", // RNDC server address
         "sha256",       // HMAC algorithm
-        "YmluZGl6cg==",  // Public Docker test key; replace with your server's base64-encoded secret
+        tsig_key_b64,
     )?;
 
     for command in ["reload", "status"] {
@@ -49,11 +52,28 @@ The `hmac-` prefix is also accepted, for example `hmac-sha256`.
 
 ## Timeouts and response limits
 
-Each command has a default 30-second time limit, configurable with `with_timeout`.
+Each command has a default 30-second time limit. Use `with_timeout(Some(duration))`
+to change it or `with_timeout(None)` to disable it. Passing a `Duration` directly
+is also supported.
+
+```no_run
+# use rndc::RndcClient;
+use std::time::Duration;
+# fn main() -> Result<(), rndc::RndcError> {
+let client = RndcClient::new("127.0.0.1:953", "sha256", "YmluZGl6cg==")?
+    .with_timeout(Some(Duration::from_secs(5)))?;
+let client = client.with_timeout(None)?;
+# Ok(())
+# }
+```
+
 Connecting to resolved addresses, the handshake, and command reads and writes
 share this deadline. Partial reads and writes do not restart it. Expiration
 returns `RndcError::TimeoutError`; zero or excessively large durations return
 `RndcError::InvalidTimeout`.
+
+With `None`, no client deadline or socket read/write timeout is set; operating
+system connection errors and server-side limits still apply.
 
 System DNS resolution is synchronous and is outside this time limit. Use an IP
 address when you need to avoid DNS lookup delays.
@@ -73,7 +93,7 @@ cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 ```
 
-The two tests in `tests/rndc.rs` require a local BIND server and are ignored by
+The tests in `tests/rndc.rs` require a local BIND server and are ignored by
 default. Start the repository's Docker test server:
 
 ```sh

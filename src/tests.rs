@@ -1,7 +1,17 @@
 use super::*;
 
 #[test]
-fn test_client_debug_redacts_secret_key() {
+fn test_default_timeout_and_explicit_disable() {
+    let client = RndcClient::new("127.0.0.1:953", "sha256", "dGVzdA==").unwrap();
+    assert_eq!(client.timeout, Some(Duration::from_secs(30)));
+    let client = client.with_timeout(None).unwrap();
+    assert_eq!(client.timeout, None);
+    let client = client.with_timeout(Some(Duration::from_secs(5))).unwrap();
+    assert_eq!(client.timeout, Some(Duration::from_secs(5)));
+}
+
+#[test]
+fn test_client_debug_redacts_tsig_key_b64() {
     let secret = b"debug-secret-value";
     let encoded = general_purpose::STANDARD.encode(secret);
     let client = RndcClient::new("127.0.0.1:953", "sha256", &encoded).unwrap();

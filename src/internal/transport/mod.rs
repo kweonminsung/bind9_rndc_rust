@@ -6,22 +6,30 @@ use crate::RndcError;
 
 pub(crate) struct Connection {
     stream: TcpStream,
-    deadline: Instant,
+    deadline: Option<Instant>,
 }
 
 impl Connection {
-    pub(crate) fn connect(server: &str, timeout: Duration) -> io::Result<Self> {
+    pub(crate) fn connect(server: &str, timeout: Option<Duration>) -> io::Result<Self> {
         // The system resolver is synchronous and has no portable timeout API.
         let addresses = server.to_socket_addrs()?;
-        let deadline = Instant::now()
-            .checked_add(timeout)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Timeout is too large"))?;
+        let deadline = timeout
+            .map(|timeout| {
+                Instant::now().checked_add(timeout).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "Timeout is too large")
+                })
+            })
+            .transpose()?;
         let mut last_error = io::Error::new(
             io::ErrorKind::InvalidInput,
             "Server address resolved to no socket addresses",
         );
         for address in addresses {
-            match TcpStream::connect_timeout(&address, remaining(deadline)?) {
+            let result = match remaining(deadline)? {
+                Some(timeout) => TcpStream::connect_timeout(&address, timeout),
+                None => TcpStream::connect(address),
+            };
+            match result {
                 Ok(stream) => return Ok(Self { stream, deadline }),
                 Err(error) => last_error = error,
             }
@@ -36,16 +44,14 @@ impl Connection {
 
 impl Read for Connection {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.stream
-            .set_read_timeout(Some(remaining(self.deadline)?))?;
+        self.stream.set_read_timeout(remaining(self.deadline)?)?;
         self.stream.read(buf).map_err(normalize_timeout)
     }
 }
 
 impl Write for Connection {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.stream
-            .set_write_timeout(Some(remaining(self.deadline)?))?;
+        self.stream.set_write_timeout(remaining(self.deadline)?)?;
         self.stream.write(buf).map_err(normalize_timeout)
     }
 
@@ -54,11 +60,17 @@ impl Write for Connection {
     }
 }
 
-fn remaining(deadline: Instant) -> io::Result<Duration> {
+fn remaining(deadline: Option<Instant>) -> io::Result<Option<Duration>> {
     deadline
-        .checked_duration_since(Instant::now())
-        .filter(|duration| !duration.is_zero())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "RNDC command deadline exceeded"))
+        .map(|deadline| {
+            deadline
+                .checked_duration_since(Instant::now())
+                .filter(|duration| !duration.is_zero())
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::TimedOut, "RNDC command deadline exceeded")
+                })
+        })
+        .transpose()
 }
 
 fn normalize_timeout(error: io::Error) -> io::Error {

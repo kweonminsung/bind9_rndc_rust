@@ -41,7 +41,7 @@ fn assert_timeout_after(
     });
     let client = RndcClient::new(&address, "sha256", "dGVzdA==")
         .unwrap()
-        .with_timeout(timeout)
+        .with_timeout(Some(timeout))
         .unwrap();
     let started = Instant::now();
     let result = client.rndc_command("status");
@@ -61,11 +61,47 @@ fn assert_timeout_after(
 #[test]
 fn test_rejects_invalid_timeouts() {
     for timeout in [Duration::ZERO, Duration::MAX] {
-        let result = RndcClient::new("127.0.0.1:953", "sha256", "dGVzdA==")
-            .unwrap()
-            .with_timeout(timeout);
-        assert!(matches!(result, Err(RndcError::InvalidTimeout(_))));
+        let client = RndcClient::new("127.0.0.1:953", "sha256", "dGVzdA==").unwrap();
+        for result in [
+            client.clone().with_timeout(timeout),
+            client.with_timeout(Some(timeout)),
+        ] {
+            assert!(matches!(result, Err(RndcError::InvalidTimeout(_))));
+        }
     }
+}
+
+#[test]
+fn test_disabled_timeout_allows_delayed_handshake_and_command_responses() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        for _ in 0..2 {
+            read_request(&mut stream);
+            thread::sleep(Duration::from_millis(150));
+            stream.write_all(&fixture()).unwrap();
+        }
+        // Keep the peer alive until the client closes the authenticated exchange.
+        assert_eq!(stream.read(&mut [0]).unwrap(), 0);
+    });
+    let client = RndcClient::new(&address, "sha256", "dGVzdA==")
+        .unwrap()
+        .with_timeout(Duration::from_millis(50))
+        .unwrap()
+        .with_timeout(None)
+        .unwrap();
+    let result = client.rndc_command("status");
+    server.join().unwrap();
+    let response = result.unwrap();
+    assert!(response.result);
+    assert_eq!(response.text.as_deref(), Some("authenticated"));
 }
 
 #[test]
