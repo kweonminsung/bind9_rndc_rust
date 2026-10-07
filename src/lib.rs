@@ -5,10 +5,11 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use indexmap::IndexMap;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::time::{Duration, Instant};
 
 pub use crate::error::RndcError;
 use crate::internal::constants::RndcAlg;
+use crate::internal::transport::{Connection, map_io_error};
 use crate::internal::{decoder, decoder::RNDCPayload, encoder, encoder::RNDCValue, utils};
 
 #[derive(Debug, Clone)]
@@ -23,8 +24,11 @@ pub struct RndcClient {
     server_url: String,
     algorithm: RndcAlg,
     secret_key: Vec<u8>,
+    timeout: Duration,
 }
+
 impl RndcClient {
+    /// Create a client with a 30-second command timeout.
     pub fn new(server_url: &str, algorithm: &str, secret_key_b64: &str) -> Result<Self, RndcError> {
         let secret_key = general_purpose::STANDARD
             .decode(secret_key_b64.as_bytes())
@@ -34,23 +38,39 @@ impl RndcClient {
             server_url: server_url.to_string(),
             algorithm: RndcAlg::from_string(algorithm)?,
             secret_key,
+            timeout: Duration::from_secs(30),
         })
     }
 
-    fn get_stream(&self) -> Result<TcpStream, RndcError> {
-        TcpStream::connect(&self.server_url)
-            .map_err(|e| RndcError::NetworkError(format!("Failed to connect to server: {}", e)))
+    /// Set the shared time limit for connecting, the handshake, and command I/O.
+    ///
+    /// The default is 30 seconds. Each command gets a new deadline after address
+    /// resolution; synchronous system DNS lookup is not covered by this timeout.
+    /// Zero and durations too large for the platform are rejected.
+    pub fn with_timeout(mut self, timeout: Duration) -> Result<Self, RndcError> {
+        if timeout.is_zero() || Instant::now().checked_add(timeout).is_none() {
+            return Err(RndcError::InvalidTimeout(
+                "Timeout must be positive and fit the platform clock".to_string(),
+            ));
+        }
+        self.timeout = timeout;
+        Ok(self)
     }
 
-    fn close_stream(&self, stream: &TcpStream) -> Result<(), RndcError> {
+    fn get_stream(&self) -> Result<Connection, RndcError> {
+        Connection::connect(&self.server_url, self.timeout)
+            .map_err(|e| map_io_error("Failed to connect to server", e))
+    }
+
+    fn close_stream(&self, stream: &Connection) -> Result<(), RndcError> {
         stream
-            .shutdown(std::net::Shutdown::Both)
-            .map_err(|e| RndcError::NetworkError(format!("Failed to shutdown stream: {}", e)))?;
+            .shutdown()
+            .map_err(|e| map_io_error("Failed to shutdown stream", e))?;
 
         Ok(())
     }
 
-    fn rndc_handshake(&self) -> Result<(TcpStream, String), RndcError> {
+    fn rndc_handshake(&self) -> Result<(Connection, String), RndcError> {
         let msg = Self::build_message(
             "null",
             &self.algorithm,
@@ -62,7 +82,7 @@ impl RndcClient {
         let mut stream = self.get_stream()?;
         stream
             .write_all(&msg)
-            .map_err(|e| RndcError::NetworkError(format!("Failed to write to stream: {}", e)))?;
+            .map_err(|e| map_io_error("Failed to write handshake", e))?;
 
         let res = RndcClient::read_packet(&mut stream)?;
 
@@ -75,6 +95,7 @@ impl RndcClient {
     ///
     /// Responses larger than 1 MiB (excluding the length prefix) are rejected.
     /// Tables and lists may nest at most 32 levels below the root response table.
+    /// See [`Self::with_timeout`] for the command I/O time limit.
     pub fn rndc_command(&self, command: &str) -> Result<RndcResult, RndcError> {
         let (mut stream, nonce) = self.rndc_handshake()?;
 
@@ -88,7 +109,7 @@ impl RndcClient {
 
         stream
             .write_all(&msg)
-            .map_err(|e| RndcError::NetworkError(format!("Failed to write to stream: {}", e)))?;
+            .map_err(|e| map_io_error("Failed to write command", e))?;
 
         let res = RndcClient::read_packet(&mut stream)?;
 
@@ -190,22 +211,18 @@ impl RndcClient {
         ))
     }
 
-    fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, RndcError> {
+    fn read_packet(stream: &mut Connection) -> Result<Vec<u8>, RndcError> {
         let mut length_bytes = [0u8; 4];
-        stream.read_exact(&mut length_bytes).map_err(|e| {
-            RndcError::NetworkError(format!(
-                "Failed to read message length: {e} (expected length: 4)"
-            ))
-        })?;
+        stream
+            .read_exact(&mut length_bytes)
+            .map_err(|e| map_io_error("Failed to read message length", e))?;
 
         let length = decoder::validate_message_length(u32::from_be_bytes(length_bytes))?;
         let mut packet = vec![0u8; 4 + length];
         packet[..4].copy_from_slice(&length_bytes);
-        stream.read_exact(&mut packet[4..]).map_err(|e| {
-            RndcError::NetworkError(format!(
-                "Failed to read message: {e} (expected length: {length})"
-            ))
-        })?;
+        stream
+            .read_exact(&mut packet[4..])
+            .map_err(|e| map_io_error("Failed to read message", e))?;
 
         Ok(packet)
     }
