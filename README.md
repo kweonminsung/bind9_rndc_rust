@@ -56,21 +56,37 @@ Each command has a default 30-second time limit. Use `with_timeout(Some(duration
 to change it or `with_timeout(None)` to disable it. Passing a `Duration` directly
 is also supported.
 
+Set a five-second time limit:
+
 ```no_run
-# use rndc::RndcClient;
+use rndc::{RndcClient, RndcError};
 use std::time::Duration;
-# fn main() -> Result<(), rndc::RndcError> {
-let client = RndcClient::new("127.0.0.1:953", "sha256", "YmluZGl6cg==")?
-    .with_timeout(Some(Duration::from_secs(5)))?;
-let client = client.with_timeout(None)?;
-# Ok(())
-# }
+
+fn main() -> Result<(), RndcError> {
+    let client = RndcClient::new("127.0.0.1:953", "sha256", "YmluZGl6cg==")?
+        .with_timeout(Some(Duration::from_secs(5)))?;
+    println!("{:?}", client.rndc_command("status")?);
+    Ok(())
+}
 ```
 
-Connecting to resolved addresses, the handshake, and command reads and writes
-share this deadline. Partial reads and writes do not restart it. Expiration
-returns `RndcError::TimeoutError`; zero or excessively large durations return
-`RndcError::InvalidTimeout`.
+Or create a client with no time limit:
+
+```no_run
+use rndc::{RndcClient, RndcError};
+
+fn main() -> Result<(), RndcError> {
+    let client = RndcClient::new("127.0.0.1:953", "sha256", "YmluZGl6cg==")?
+        .with_timeout(None)?;
+    println!("{:?}", client.rndc_command("status")?);
+    Ok(())
+}
+```
+
+When a time limit is set, connecting to resolved addresses, the handshake, and
+command reads and writes share one deadline. Partial reads and writes do not
+restart it. Expiration returns `RndcError::TimeoutError`; zero or excessively
+large durations return `RndcError::InvalidTimeout`.
 
 With `None`, no client deadline or socket read/write timeout is set; operating
 system connection errors and server-side limits still apply.
