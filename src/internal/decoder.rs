@@ -3,6 +3,8 @@ use indexmap::IndexMap;
 use std::io::{Cursor, Read};
 
 use crate::error::RndcError;
+use crate::internal::auth;
+use crate::internal::constants::RndcAlg;
 use crate::internal::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE};
 
 #[allow(dead_code)]
@@ -82,7 +84,11 @@ fn list_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<Vec<RNDCPayload>, RndcErr
     Ok(list)
 }
 
-pub(crate) fn decode(buf: &[u8]) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
+pub(crate) fn decode(
+    buf: &[u8],
+    algorithm: &RndcAlg,
+    secret: &[u8],
+) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
     let mut cursor = Cursor::new(buf);
 
     let len = cursor
@@ -104,7 +110,13 @@ pub(crate) fn decode(buf: &[u8]) -> Result<IndexMap<String, RNDCPayload>, RndcEr
         )));
     }
 
-    let res = table_fromwire(&mut cursor)?;
+    let body = auth::verify(&buf[cursor.position() as usize..], algorithm, secret)?;
+    let res = table_fromwire(&mut Cursor::new(body))?;
+    if res.contains_key("_auth") {
+        return Err(RndcError::AuthenticationError(
+            "Multiple RNDC authentication fields".to_string(),
+        ));
+    }
 
     Ok(res)
 }

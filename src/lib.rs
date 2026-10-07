@@ -90,7 +90,7 @@ impl RndcClient {
 
         self.close_stream(&stream)?;
 
-        let resp = decoder::decode(&res)?;
+        let resp = decoder::decode(&res, &self.algorithm, &self.secret_key)?;
 
         if let Some(RNDCPayload::Table(data)) = resp.get("_data") {
             // dbg!("Received data: {:?}", data);
@@ -175,18 +175,11 @@ impl RndcClient {
     }
 
     fn get_nonce(&self, packet: &[u8]) -> Result<String, RndcError> {
-        let resp = decoder::decode(packet)?;
-        if let Some(RNDCPayload::Table(ctrl_map)) = resp.get("_ctrl").and_then(|ctrl| {
-            if let RNDCPayload::Table(map) = ctrl {
-                Some(RNDCPayload::Table(map.clone()))
-            } else {
-                None
-            }
-        }) {
-            if let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce") {
-                // println!("Received nonce: {:?}", new_nonce);
-                return Ok(new_nonce.to_string());
-            }
+        let resp = decoder::decode(packet, &self.algorithm, &self.secret_key)?;
+        if let Some(RNDCPayload::Table(ctrl_map)) = resp.get("_ctrl")
+            && let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce")
+        {
+            return Ok(new_nonce.to_string());
         }
         Err(RndcError::DecodingError(
             "RNDC nonce not received".to_string(),

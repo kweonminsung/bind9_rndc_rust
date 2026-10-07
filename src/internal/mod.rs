@@ -1,3 +1,4 @@
+pub(crate) mod auth;
 pub(crate) mod constants;
 pub(crate) mod decoder;
 pub(crate) mod encoder;

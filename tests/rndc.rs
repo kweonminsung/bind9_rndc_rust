@@ -9,8 +9,8 @@ fn get_test_client() -> RndcClient {
 }
 
 #[test]
-#[ignore]
-fn e2e_rndc_status() {
+#[ignore = "requires the Docker BIND server on 127.0.0.1:953"]
+fn test_rndc_status() {
     let client = get_test_client();
     let response = client.rndc_command("status").unwrap();
 
@@ -22,8 +22,8 @@ fn e2e_rndc_status() {
 }
 
 #[test]
-#[ignore]
-fn e2e_rndc_reload() {
+#[ignore = "requires the Docker BIND server on 127.0.0.1:953"]
+fn test_rndc_reload() {
     let client = get_test_client();
     let response = client.rndc_command("reload").unwrap();
 
