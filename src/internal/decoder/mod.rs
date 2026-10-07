@@ -8,6 +8,9 @@ use crate::internal::constants::{
     MAX_MESSAGE_LENGTH, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE, RndcAlg,
 };
 
+// Count nested tables and lists below the root response table.
+const MAX_NESTING_DEPTH: usize = 32;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum RNDCPayload {
@@ -33,7 +36,7 @@ fn key_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<String, RndcError> {
     String::from_utf8(name.to_vec()).map_err(|e| RndcError::DecodingError(e.to_string()))
 }
 
-fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, RndcError> {
+fn value_fromwire(cursor: &mut Cursor<&[u8]>, depth: usize) -> Result<RNDCPayload, RndcError> {
     let typ = cursor
         .read_u8()
         .map_err(|e| RndcError::DecodingError(e.to_string()))?;
@@ -45,8 +48,13 @@ fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, RndcError> 
 
     match typ {
         MSGTYPE_STRING | MSGTYPE_BINARYDATA => binary_fromwire(&mut sub_cursor, len),
-        MSGTYPE_TABLE => table_fromwire(&mut sub_cursor).map(RNDCPayload::Table),
-        MSGTYPE_LIST => list_fromwire(&mut sub_cursor).map(RNDCPayload::List),
+        MSGTYPE_TABLE | MSGTYPE_LIST if depth >= MAX_NESTING_DEPTH => {
+            Err(RndcError::DecodingError(format!(
+                "RNDC nesting depth exceeds limit of {MAX_NESTING_DEPTH}"
+            )))
+        }
+        MSGTYPE_TABLE => table_fromwire(&mut sub_cursor, depth + 1).map(RNDCPayload::Table),
+        MSGTYPE_LIST => list_fromwire(&mut sub_cursor, depth + 1).map(RNDCPayload::List),
         _ => Err(RndcError::DecodingError(format!(
             "Unknown RNDC message type: {}",
             typ
@@ -76,20 +84,23 @@ pub(crate) fn validate_message_length(length: u32) -> Result<usize, RndcError> {
     Ok(length)
 }
 
-fn table_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
+fn table_fromwire(
+    cursor: &mut Cursor<&[u8]>,
+    depth: usize,
+) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
     let mut map = IndexMap::new();
     while (cursor.position() as usize) < cursor.get_ref().len() {
         let key = key_fromwire(cursor)?;
-        let value = value_fromwire(cursor)?;
+        let value = value_fromwire(cursor, depth)?;
         map.insert(key, value);
     }
     Ok(map)
 }
 
-fn list_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<Vec<RNDCPayload>, RndcError> {
+fn list_fromwire(cursor: &mut Cursor<&[u8]>, depth: usize) -> Result<Vec<RNDCPayload>, RndcError> {
     let mut list = Vec::new();
     while (cursor.position() as usize) < cursor.get_ref().len() {
-        let value = value_fromwire(cursor)?;
+        let value = value_fromwire(cursor, depth)?;
         list.push(value);
     }
     Ok(list)
@@ -123,7 +134,7 @@ pub(crate) fn decode(
     }
 
     let body = auth::verify(&buf[cursor.position() as usize..], algorithm, secret)?;
-    let res = table_fromwire(&mut Cursor::new(body))?;
+    let res = table_fromwire(&mut Cursor::new(body), 0)?;
     if res.contains_key("_auth") {
         return Err(RndcError::AuthError(
             "Multiple RNDC auth fields".to_string(),

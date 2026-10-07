@@ -151,3 +151,19 @@ fn test_accepts_a_response_at_the_message_size_limit() {
     assert!(response.result);
     assert_eq!(response.text.as_deref().unwrap().len(), text_length);
 }
+
+#[test]
+fn test_rejects_excessive_nesting_with_valid_auth() {
+    // Build 10,000 nested lists without recursion in the test itself.
+    let mut nested = Vec::new();
+    for remaining in (0..10_000u32).rev() {
+        nested.push(3);
+        nested.extend_from_slice(&(remaining * 5).to_be_bytes());
+    }
+    let packet = signed_packet(&field(b"nested", 3, &nested));
+    for responses in [vec![packet.clone()], vec![fixture(), packet]] {
+        let result = exchange(responses, false, false);
+        assert!(matches!(result, Err(RndcError::DecodingError(message))
+            if message.contains("nesting depth exceeds")));
+    }
+}

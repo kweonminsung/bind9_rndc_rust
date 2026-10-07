@@ -52,7 +52,7 @@ fn test_rejects_value_lengths_exceeding_remaining_data() {
         for len in [1u32, 16, u32::MAX] {
             let mut value = vec![kind];
             value.extend_from_slice(&len.to_be_bytes());
-            assert_decoding_error(value_fromwire(&mut Cursor::new(value.as_slice())));
+            assert_decoding_error(value_fromwire(&mut Cursor::new(value.as_slice()), 0));
         }
     }
 }
@@ -61,7 +61,7 @@ fn test_rejects_value_lengths_exceeding_remaining_data() {
 fn test_rejects_truncated_values() {
     let value = b"\x01\x00\x00\x00\x03abc";
     for len in 0..value.len() {
-        assert_decoding_error(value_fromwire(&mut Cursor::new(&value[..len])));
+        assert_decoding_error(value_fromwire(&mut Cursor::new(&value[..len]), 0));
     }
 }
 
@@ -76,7 +76,7 @@ fn test_nested_values_cannot_read_beyond_their_container() {
         value.extend_from_slice(contents);
         // This byte is outside the container and cannot satisfy its inner value.
         value.push(b'x');
-        assert_decoding_error(value_fromwire(&mut Cursor::new(value.as_slice())));
+        assert_decoding_error(value_fromwire(&mut Cursor::new(value.as_slice()), 0));
     }
 }
 
@@ -84,7 +84,7 @@ fn test_nested_values_cannot_read_beyond_their_container() {
 fn test_preserves_text_and_binary_values_in_lists() {
     let value = b"\x03\x00\x00\x00\x0c\x01\x00\x00\x00\x01a\x01\x00\x00\x00\x01\xff";
     let mut cursor = Cursor::new(value.as_slice());
-    let RNDCPayload::List(values) = value_fromwire(&mut cursor).unwrap() else {
+    let RNDCPayload::List(values) = value_fromwire(&mut cursor, 0).unwrap() else {
         panic!("expected a list");
     };
     assert!(matches!(&values[0], RNDCPayload::String(value) if value == "a"));
@@ -95,4 +95,73 @@ fn test_preserves_text_and_binary_values_in_lists() {
 #[test]
 fn test_rejects_truncated_keys() {
     assert_decoding_error(key_fromwire(&mut Cursor::new(b"\x03ab".as_slice())));
+}
+
+fn nested_value(kinds: &[u8]) -> Vec<u8> {
+    let mut value = b"\x01\x00\x00\x00\x01x".to_vec();
+    for &kind in kinds.iter().rev() {
+        let mut contents = Vec::new();
+        if kind == MSGTYPE_TABLE {
+            contents.extend_from_slice(b"\x01x");
+        }
+        contents.extend(value);
+        value = vec![kind];
+        value.extend_from_slice(&(contents.len() as u32).to_be_bytes());
+        value.extend(contents);
+    }
+    value
+}
+
+#[test]
+fn test_accepts_nesting_at_the_depth_limit() {
+    for kind in [MSGTYPE_TABLE, MSGTYPE_LIST] {
+        let value = nested_value(&[kind; MAX_NESTING_DEPTH]);
+        let mut cursor = Cursor::new(value.as_slice());
+        value_fromwire(&mut cursor, 0).unwrap();
+        assert_eq!(cursor.position() as usize, value.len());
+    }
+}
+
+#[test]
+fn test_rejects_nesting_beyond_the_depth_limit() {
+    for kinds in [
+        vec![MSGTYPE_TABLE; MAX_NESTING_DEPTH + 1],
+        vec![MSGTYPE_LIST; MAX_NESTING_DEPTH + 1],
+        (0..=MAX_NESTING_DEPTH)
+            .map(|depth| {
+                if depth % 2 == 0 {
+                    MSGTYPE_TABLE
+                } else {
+                    MSGTYPE_LIST
+                }
+            })
+            .collect(),
+    ] {
+        let value = nested_value(&kinds);
+        let result = value_fromwire(&mut Cursor::new(value.as_slice()), 0);
+        assert!(matches!(result, Err(RndcError::DecodingError(message))
+            if message.contains("nesting depth exceeds")));
+    }
+}
+
+#[test]
+fn test_rejects_empty_containers_beyond_the_depth_limit() {
+    for kind in [MSGTYPE_TABLE, MSGTYPE_LIST] {
+        let value = [kind, 0, 0, 0, 0];
+        assert_decoding_error(value_fromwire(
+            &mut Cursor::new(value.as_slice()),
+            MAX_NESTING_DEPTH,
+        ));
+    }
+}
+
+#[test]
+fn test_nesting_depth_is_independent_for_sibling_values() {
+    let value = nested_value(&[MSGTYPE_LIST; MAX_NESTING_DEPTH]);
+    let mut body = vec![1, b'a'];
+    body.extend_from_slice(&value);
+    body.extend_from_slice(&[1, b'b']);
+    body.extend_from_slice(&value);
+    let decoded = table_fromwire(&mut Cursor::new(body.as_slice()), 0).unwrap();
+    assert_eq!(decoded.len(), 2);
 }

@@ -74,6 +74,7 @@ impl RndcClient {
     /// Execute a command and authenticate the server response.
     ///
     /// Responses larger than 1 MiB (excluding the length prefix) are rejected.
+    /// Tables and lists may nest at most 32 levels below the root response table.
     pub fn rndc_command(&self, command: &str) -> Result<RndcResult, RndcError> {
         let (mut stream, nonce) = self.rndc_handshake()?;
 
