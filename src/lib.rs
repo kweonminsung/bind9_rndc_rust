@@ -71,6 +71,9 @@ impl RndcClient {
         Ok((stream, nonce))
     }
 
+    /// Execute a command and authenticate the server response.
+    ///
+    /// Responses larger than 1 MiB (excluding the length prefix) are rejected.
     pub fn rndc_command(&self, command: &str) -> Result<RndcResult, RndcError> {
         let (mut stream, nonce) = self.rndc_handshake()?;
 
@@ -187,30 +190,22 @@ impl RndcClient {
     }
 
     fn read_packet(stream: &mut TcpStream) -> Result<Vec<u8>, RndcError> {
-        let mut header = [0u8; 8];
-        stream.read_exact(&mut header).map_err(|e| {
+        let mut length_bytes = [0u8; 4];
+        stream.read_exact(&mut length_bytes).map_err(|e| {
             RndcError::NetworkError(format!(
-                "Failed to read header: {} (expected length: {})",
-                e,
-                header.len()
+                "Failed to read message length: {e} (expected length: 4)"
             ))
         })?;
 
-        let length_field = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) - 4;
-        // let version = u32::from_be_bytes([header[4], header[5], header[6], header[7]]);
-
-        let mut payload = vec![0u8; length_field as usize];
-        stream.read_exact(&mut payload).map_err(|e| {
+        let length = decoder::validate_message_length(u32::from_be_bytes(length_bytes))?;
+        let mut packet = vec![0u8; 4 + length];
+        packet[..4].copy_from_slice(&length_bytes);
+        stream.read_exact(&mut packet[4..]).map_err(|e| {
             RndcError::NetworkError(format!(
-                "Failed to read payload: {} (expected length: {})",
-                e, length_field
+                "Failed to read message: {e} (expected length: {length})"
             ))
         })?;
 
-        let mut full_packet = Vec::with_capacity(8 + payload.len());
-        full_packet.extend_from_slice(&header);
-        full_packet.extend_from_slice(&payload);
-
-        Ok(full_packet)
+        Ok(packet)
     }
 }

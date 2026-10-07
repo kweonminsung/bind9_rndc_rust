@@ -1,4 +1,4 @@
-"""Generate RNDC response vectors independently of the Rust encoder.
+"""Generate RNDC auth response vectors independently of the Rust encoder.
 
 Run with Python 3. Only the standard library is needed. The key is the public
 test value b"test" (base64: dGVzdA==), never an operational RNDC key.

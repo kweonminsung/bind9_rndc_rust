@@ -8,7 +8,7 @@ use super::constants::{
 use crate::error::RndcError;
 
 /// Authenticate the original bytes following the leading RNDC `_auth` field.
-/// Only the fixed authentication envelope is parsed before verification.
+/// Only the fixed auth envelope is parsed before verification.
 pub(crate) fn verify<'a>(
     mut body: &'a [u8],
     algorithm: &RndcAlg,
@@ -25,7 +25,7 @@ pub(crate) fn verify<'a>(
     };
     let signature = take_field(&mut auth, name, MSGTYPE_BINARYDATA)?;
     if !auth.is_empty() {
-        return Err(auth_error("Unexpected fields in RNDC authentication table"));
+        return Err(auth_error("Unexpected fields in RNDC auth table"));
     }
 
     let digest = if *algorithm == RndcAlg::MD5 {
@@ -83,7 +83,7 @@ fn take_field<'a>(
     let name = take(input, name_len)?;
     let field_type = take(input, 1)?[0];
     if name != expected_name || field_type != expected_type {
-        return Err(auth_error("Missing or invalid RNDC authentication field"));
+        return Err(auth_error("Missing or invalid RNDC auth field"));
     }
     let len = take(input, 4)?;
     let len = u32::from_be_bytes([len[0], len[1], len[2], len[3]]) as usize;
@@ -93,13 +93,13 @@ fn take_field<'a>(
 fn take<'a>(input: &mut &'a [u8], len: usize) -> Result<&'a [u8], RndcError> {
     let value = input
         .get(..len)
-        .ok_or_else(|| auth_error("Incomplete RNDC authentication field"))?;
+        .ok_or_else(|| auth_error("Incomplete RNDC auth field"))?;
     *input = &input[len..];
     Ok(value)
 }
 
 fn auth_error(message: &str) -> RndcError {
-    RndcError::AuthenticationError(message.to_string())
+    RndcError::AuthError(message.to_string())
 }
 
 #[cfg(test)]

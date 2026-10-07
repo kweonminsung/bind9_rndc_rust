@@ -34,10 +34,7 @@ fn auth_len(algorithm: &RndcAlg) -> usize {
 }
 
 fn assert_auth_error(result: Result<&[u8], RndcError>) {
-    assert!(
-        matches!(result, Err(RndcError::AuthenticationError(_))),
-        "{result:?}"
-    );
+    assert!(matches!(result, Err(RndcError::AuthError(_))), "{result:?}");
 }
 
 #[test]
@@ -78,7 +75,7 @@ fn test_rejects_modified_signatures_for_all_algorithms() {
 }
 
 #[test]
-fn test_rejects_missing_or_misplaced_authentication() {
+fn test_rejects_missing_or_misplaced_auth() {
     for (algorithm, vector) in VECTORS {
         let packet = hex::decode(vector.trim()).unwrap();
         let body = &packet[8 + auth_len(&algorithm)..];
@@ -90,7 +87,7 @@ fn test_rejects_missing_or_misplaced_authentication() {
 }
 
 #[test]
-fn test_rejects_every_truncated_authentication_envelope() {
+fn test_rejects_every_truncated_auth_envelope() {
     for (algorithm, vector) in VECTORS {
         let packet = hex::decode(vector.trim()).unwrap();
         for len in 0..auth_len(&algorithm) {
@@ -100,7 +97,7 @@ fn test_rejects_every_truncated_authentication_envelope() {
 }
 
 #[test]
-fn test_rejects_malformed_authentication_fields() {
+fn test_rejects_malformed_auth_fields() {
     let packet = hex::decode(VECTORS[3].1.trim()).unwrap();
     let body = &packet[8..];
     // Outer name/type, inner name/type, and signature encoding.
@@ -118,9 +115,9 @@ fn test_rejects_malformed_authentication_fields() {
 }
 
 #[test]
-fn test_rejects_additional_authentication_table_fields() {
+fn test_rejects_additional_auth_table_fields() {
     let mut packet = hex::decode(VECTORS[3].1.trim()).unwrap();
-    // Extend the authentication table over the following `_ctrl` field.
+    // Extend the auth table over the following `_ctrl` field.
     let table_len = u32::from_be_bytes(packet[15..19].try_into().unwrap());
     packet[15..19].copy_from_slice(&(table_len + 1).to_be_bytes());
     assert_auth_error(verify(&packet[8..], &RndcAlg::SHA256, b"test"));
@@ -152,13 +149,13 @@ fn test_rejects_modified_sha_padding() {
 }
 
 #[test]
-fn test_authenticates_before_decoding_untrusted_body() {
+fn test_verifies_auth_before_decoding_untrusted_body() {
     for (algorithm, vector) in VECTORS {
         let mut packet = hex::decode(vector.trim()).unwrap();
         packet[8 + auth_len(&algorithm)..].fill(0xff);
         assert!(matches!(
             decoder::decode(&packet, &algorithm, b"test"),
-            Err(RndcError::AuthenticationError(_))
+            Err(RndcError::AuthError(_))
         ));
     }
 }

@@ -7,8 +7,8 @@ pub enum RndcError {
     NetworkError(String),
     EncodingError(String),
     DecodingError(String),
-    /// The server response has missing, malformed, or invalid authentication.
-    AuthenticationError(String),
+    /// The server response has missing, malformed, or invalid auth data.
+    AuthError(String),
 }
 impl fmt::Display for RndcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -18,7 +18,7 @@ impl fmt::Display for RndcError {
             RndcError::NetworkError(msg) => write!(f, "Network error: {}", msg),
             RndcError::EncodingError(msg) => write!(f, "Encoding error: {}", msg),
             RndcError::DecodingError(msg) => write!(f, "Decoding error: {}", msg),
-            RndcError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
+            RndcError::AuthError(msg) => write!(f, "Auth error: {}", msg),
         }
     }
 }
