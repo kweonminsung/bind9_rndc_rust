@@ -26,8 +26,8 @@ pub struct RndcResult {
 pub struct RndcClient {
     server_url: String,
     algorithm: RndcAlg,
-    secret_key: Vec<u8>,
-    timeout: Duration,
+    tsig_key_b64: Vec<u8>,
+    timeout: Option<Duration>,
 }
 
 impl fmt::Debug for RndcClient {
@@ -35,7 +35,7 @@ impl fmt::Debug for RndcClient {
         f.debug_struct("RndcClient")
             .field("server_url", &self.server_url)
             .field("algorithm", &self.algorithm)
-            .field("secret_key", &"[REDACTED]")
+            .field("tsig_key_b64", &"[REDACTED]")
             .field("timeout", &self.timeout)
             .finish()
     }
@@ -43,16 +43,18 @@ impl fmt::Debug for RndcClient {
 
 impl RndcClient {
     /// Create a client with a 30-second command timeout.
-    pub fn new(server_url: &str, algorithm: &str, secret_key_b64: &str) -> Result<Self, RndcError> {
-        let secret_key = general_purpose::STANDARD
-            .decode(secret_key_b64.as_bytes())
+    ///
+    /// `tsig_key_b64` is the base64-encoded shared key from the BIND key configuration.
+    pub fn new(server_url: &str, algorithm: &str, tsig_key_b64: &str) -> Result<Self, RndcError> {
+        let tsig_key_b64 = general_purpose::STANDARD
+            .decode(tsig_key_b64.as_bytes())
             .map_err(|e| RndcError::Base64DecodeError(e.to_string()))?;
 
         Ok(RndcClient {
             server_url: server_url.to_string(),
             algorithm: RndcAlg::from_string(algorithm)?,
-            secret_key,
-            timeout: Duration::from_secs(30),
+            tsig_key_b64,
+            timeout: Some(Duration::from_secs(30)),
         })
     }
 
@@ -60,9 +62,13 @@ impl RndcClient {
     ///
     /// The default is 30 seconds. Each command gets a new deadline after address
     /// resolution; synchronous system DNS lookup is not covered by this timeout.
-    /// Zero and durations too large for the platform are rejected.
-    pub fn with_timeout(mut self, timeout: Duration) -> Result<Self, RndcError> {
-        if timeout.is_zero() || Instant::now().checked_add(timeout).is_none() {
+    /// Pass `None` to disable the time limit, or a `Duration` / `Some(Duration)` to
+    /// set it. Zero and durations too large for the platform are rejected.
+    pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Result<Self, RndcError> {
+        let timeout = timeout.into();
+        if let Some(timeout) = timeout
+            && (timeout.is_zero() || Instant::now().checked_add(timeout).is_none())
+        {
             return Err(RndcError::InvalidTimeout(
                 "Timeout must be positive and fit the platform clock".to_string(),
             ));
@@ -88,7 +94,7 @@ impl RndcClient {
         let msg = Self::build_message(
             "null",
             &self.algorithm,
-            &self.secret_key,
+            &self.tsig_key_b64,
             None,
             rand::random(),
         )?;
@@ -116,7 +122,7 @@ impl RndcClient {
         let msg = RndcClient::build_message(
             command,
             &self.algorithm,
-            &self.secret_key,
+            &self.tsig_key_b64,
             Some(&nonce),
             rand::random(),
         )?;
@@ -129,7 +135,7 @@ impl RndcClient {
 
         self.close_stream(&stream)?;
 
-        let resp = decoder::decode(&res, &self.algorithm, &self.secret_key)?;
+        let resp = decoder::decode(&res, &self.algorithm, &self.tsig_key_b64)?;
 
         if let Some(RNDCPayload::Table(data)) = resp.get("_data") {
             // dbg!("Received data: {:?}", data);
@@ -214,7 +220,7 @@ impl RndcClient {
     }
 
     fn get_nonce(&self, packet: &[u8]) -> Result<String, RndcError> {
-        let resp = decoder::decode(packet, &self.algorithm, &self.secret_key)?;
+        let resp = decoder::decode(packet, &self.algorithm, &self.tsig_key_b64)?;
         if let Some(RNDCPayload::Table(ctrl_map)) = resp.get("_ctrl")
             && let Some(RNDCPayload::String(new_nonce)) = ctrl_map.get("_nonce")
         {
