@@ -14,7 +14,7 @@ fn test_rndc_status() {
     let client = get_test_client();
     let response = client.rndc_command("status").unwrap();
 
-    assert!(response.result, "rndc command failed: {:?}", &response);
+    assert!(response.result, "rndc command failed: {response:?}");
     assert!(
         response.text.is_some(),
         "rndc status response text is missing"
@@ -27,7 +27,7 @@ fn test_rndc_reload() {
     let client = get_test_client();
     let response = client.rndc_command("reload").unwrap();
 
-    assert!(response.result, "rndc command failed: {:?}", &response);
+    assert!(response.result, "rndc command failed: {response:?}");
     assert!(
         response.text.is_some()
             && response
