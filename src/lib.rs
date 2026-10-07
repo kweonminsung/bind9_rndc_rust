@@ -4,6 +4,7 @@ mod internal;
 use base64::Engine;
 use base64::engine::general_purpose;
 use indexmap::IndexMap;
+use std::fmt;
 use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
@@ -19,12 +20,23 @@ pub struct RndcResult {
     pub err: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RndcClient {
     server_url: String,
     algorithm: RndcAlg,
     secret_key: Vec<u8>,
     timeout: Duration,
+}
+
+impl fmt::Debug for RndcClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RndcClient")
+            .field("server_url", &self.server_url)
+            .field("algorithm", &self.algorithm)
+            .field("secret_key", &"[REDACTED]")
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 impl RndcClient {
@@ -227,3 +239,6 @@ impl RndcClient {
         Ok(packet)
     }
 }
+
+#[cfg(test)]
+mod tests;
