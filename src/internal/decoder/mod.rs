@@ -1,11 +1,12 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use indexmap::IndexMap;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
 use crate::error::RndcError;
 use crate::internal::auth;
-use crate::internal::constants::RndcAlg;
-use crate::internal::constants::{MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE};
+use crate::internal::constants::{
+    MAX_MESSAGE_LENGTH, MSGTYPE_BINARYDATA, MSGTYPE_LIST, MSGTYPE_STRING, MSGTYPE_TABLE, RndcAlg,
+};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -17,14 +18,10 @@ pub(crate) enum RNDCPayload {
 }
 
 fn binary_fromwire(cursor: &mut Cursor<&[u8]>, len: usize) -> Result<RNDCPayload, RndcError> {
-    let mut buf = vec![0u8; len];
-    cursor
-        .read_exact(&mut buf)
-        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
-
-    match String::from_utf8(buf.clone()) {
+    let buf = take_bytes(cursor, len)?.to_vec();
+    match String::from_utf8(buf) {
         Ok(s) => Ok(RNDCPayload::String(s)),
-        Err(_) => Ok(RNDCPayload::Binary(buf)),
+        Err(error) => Ok(RNDCPayload::Binary(error.into_bytes())),
     }
 }
 
@@ -32,11 +29,8 @@ fn key_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<String, RndcError> {
     let len = cursor
         .read_u8()
         .map_err(|e| RndcError::DecodingError(e.to_string()))? as usize;
-    let mut buf = vec![0u8; len];
-    cursor
-        .read_exact(&mut buf)
-        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
-    String::from_utf8(buf).map_err(|e| RndcError::DecodingError(e.to_string()))
+    let name = take_bytes(cursor, len)?;
+    String::from_utf8(name.to_vec()).map_err(|e| RndcError::DecodingError(e.to_string()))
 }
 
 fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, RndcError> {
@@ -46,12 +40,10 @@ fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, RndcError> 
     let len = cursor
         .read_u32::<BigEndian>()
         .map_err(|e| RndcError::DecodingError(e.to_string()))? as usize;
-    let pos = cursor.position() as usize;
-
-    let slice = &cursor.get_ref()[pos..pos + len];
+    let slice = take_bytes(cursor, len)?;
     let mut sub_cursor = Cursor::new(slice);
 
-    let result = match typ {
+    match typ {
         MSGTYPE_STRING | MSGTYPE_BINARYDATA => binary_fromwire(&mut sub_cursor, len),
         MSGTYPE_TABLE => table_fromwire(&mut sub_cursor).map(RNDCPayload::Table),
         MSGTYPE_LIST => list_fromwire(&mut sub_cursor).map(RNDCPayload::List),
@@ -59,10 +51,29 @@ fn value_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<RNDCPayload, RndcError> 
             "Unknown RNDC message type: {}",
             typ
         ))),
-    };
+    }
+}
 
-    cursor.set_position((pos + len) as u64);
-    result
+fn take_bytes<'a>(cursor: &mut Cursor<&'a [u8]>, len: usize) -> Result<&'a [u8], RndcError> {
+    let bounds_error =
+        || RndcError::DecodingError("RNDC field length exceeds remaining data".into());
+    let pos = usize::try_from(cursor.position()).map_err(|_| bounds_error())?;
+    let end = pos.checked_add(len).ok_or_else(bounds_error)?;
+    let buffer = *cursor.get_ref();
+    let bytes = buffer.get(pos..end).ok_or_else(bounds_error)?;
+    cursor.set_position(end as u64);
+    Ok(bytes)
+}
+
+pub(crate) fn validate_message_length(length: u32) -> Result<usize, RndcError> {
+    let length = length as usize;
+    // Every message includes a four-byte protocol version after its length.
+    if !(4..=MAX_MESSAGE_LENGTH).contains(&length) {
+        return Err(RndcError::DecodingError(format!(
+            "Invalid RNDC message length: {length} (expected 4..={MAX_MESSAGE_LENGTH})"
+        )));
+    }
+    Ok(length)
 }
 
 fn table_fromwire(cursor: &mut Cursor<&[u8]>) -> Result<IndexMap<String, RNDCPayload>, RndcError> {
@@ -93,7 +104,8 @@ pub(crate) fn decode(
 
     let len = cursor
         .read_u32::<BigEndian>()
-        .map_err(|e| RndcError::DecodingError(e.to_string()))? as usize;
+        .map_err(|e| RndcError::DecodingError(e.to_string()))?;
+    let len = validate_message_length(len)?;
     if len != buf.len() - 4 {
         return Err(RndcError::DecodingError(
             "RNDC buffer length mismatch".to_string(),
@@ -113,10 +125,13 @@ pub(crate) fn decode(
     let body = auth::verify(&buf[cursor.position() as usize..], algorithm, secret)?;
     let res = table_fromwire(&mut Cursor::new(body))?;
     if res.contains_key("_auth") {
-        return Err(RndcError::AuthenticationError(
-            "Multiple RNDC authentication fields".to_string(),
+        return Err(RndcError::AuthError(
+            "Multiple RNDC auth fields".to_string(),
         ));
     }
 
     Ok(res)
 }
+
+#[cfg(test)]
+mod tests;

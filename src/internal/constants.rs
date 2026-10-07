@@ -1,5 +1,8 @@
 use crate::error::RndcError;
 
+// BIND's rndc client accepts at most 1 MiB, excluding the length prefix.
+pub(crate) const MAX_MESSAGE_LENGTH: usize = 1024 * 1024;
+
 // Message types
 pub(crate) const MSGTYPE_STRING: u8 = 0;
 pub(crate) const MSGTYPE_BINARYDATA: u8 = 1;

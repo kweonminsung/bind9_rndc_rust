@@ -62,7 +62,7 @@ fn exchange(
 #[test]
 fn test_rejects_unsigned_handshake_before_sending_command() {
     let result = exchange(unsigned_response(), None, "dGVzdA==");
-    assert!(matches!(result, Err(RndcError::AuthenticationError(_))));
+    assert!(matches!(result, Err(RndcError::AuthError(_))));
 }
 
 #[test]
@@ -74,19 +74,19 @@ fn test_rejects_tampered_handshake_before_sending_command() {
         .unwrap();
     handshake[nonce] = b'9';
     let result = exchange(handshake, None, "dGVzdA==");
-    assert!(matches!(result, Err(RndcError::AuthenticationError(_))));
+    assert!(matches!(result, Err(RndcError::AuthError(_))));
 }
 
 #[test]
 fn test_rejects_handshake_signed_with_another_key() {
     let result = exchange(signed_response(), None, "d3Jvbmc=");
-    assert!(matches!(result, Err(RndcError::AuthenticationError(_))));
+    assert!(matches!(result, Err(RndcError::AuthError(_))));
 }
 
 #[test]
 fn test_rejects_unsigned_command_response() {
     let result = exchange(signed_response(), Some(unsigned_response()), "dGVzdA==");
-    assert!(matches!(result, Err(RndcError::AuthenticationError(_))));
+    assert!(matches!(result, Err(RndcError::AuthError(_))));
 }
 
 #[test]
@@ -94,11 +94,11 @@ fn test_rejects_tampered_command_response() {
     let mut response = signed_response();
     *response.last_mut().unwrap() ^= 1;
     let result = exchange(signed_response(), Some(response), "dGVzdA==");
-    assert!(matches!(result, Err(RndcError::AuthenticationError(_))));
+    assert!(matches!(result, Err(RndcError::AuthError(_))));
 }
 
 #[test]
-fn test_accepts_authenticated_success_response() {
+fn test_accepts_success_response_with_valid_auth() {
     let response = exchange(signed_response(), Some(signed_response()), "dGVzdA==").unwrap();
     assert!(response.result);
     assert_eq!(response.text.as_deref(), Some("authenticated"));
@@ -106,7 +106,7 @@ fn test_accepts_authenticated_success_response() {
 }
 
 #[test]
-fn test_accepts_authenticated_error_response() {
+fn test_accepts_error_response_with_valid_auth() {
     let response = hex::decode(include_str!("fixtures/sha256-error.hex").trim()).unwrap();
     let response = exchange(signed_response(), Some(response), "dGVzdA==").unwrap();
     assert!(!response.result);
