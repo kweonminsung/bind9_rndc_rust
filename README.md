@@ -2,6 +2,15 @@
 
 A synchronous Rust client for BIND9's RNDC management protocol.
 
+Requires Rust 1.88 or later. No async runtime is required.
+
+## Installation
+
+```toml
+[dependencies]
+rndc = "0.1.7"
+```
+
 ## Example usage
 
 The example below sends `reload` and `status` commands to the default RNDC port
@@ -44,17 +53,31 @@ version: BIND ...
 server is up and running
 ```
 
+## Operations
+
+`rndc_command(command)` sends an RNDC command string, such as `reload` or `status`,
+and returns the server's result and optional text.
+
 Transport, auth, and decoding failures return `Err(RndcError)`; a command rejected
 by BIND returns `Ok(RndcResult)` with `result == false` and optional `err` text.
 
+## Authentication and transport
+
+Requests and responses use HMAC authentication with the configured shared key.
 Supported algorithms are `md5`, `sha1`, `sha224`, `sha256`, `sha384`, and `sha512`.
-The `hmac-` prefix is also accepted, for example `hmac-sha256`.
+The `hmac-` prefix is also accepted, for example `hmac-sha256`. Client debug
+output redacts the secret key.
 
-## Timeouts and response limits
+Each command opens a new TCP connection for the handshake and command exchange.
+Server addresses use `host:port` or `[IPv6]:port`, such as `[::1]:953`.
 
-Each command has a default 30-second time limit. Use `with_timeout(Some(duration))`
-to change it or `with_timeout(None)` to disable it. Passing a `Duration` directly
-is also supported.
+Calls block the calling thread. In a Tokio application, run them through
+[`tokio::task::spawn_blocking`](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html).
+
+## Timeouts and limits
+
+Each command has a default 30-second time limit. `with_timeout(Duration)` and
+`with_timeout(Some(Duration))` change it; `with_timeout(None)` disables it.
 
 Set a five-second time limit:
 
@@ -64,7 +87,7 @@ use std::time::Duration;
 
 fn main() -> Result<(), RndcError> {
     let client = RndcClient::new("127.0.0.1:953", "sha256", "YmluZGl6cg==")?
-        .with_timeout(Some(Duration::from_secs(5)))?;
+        .with_timeout(Duration::from_secs(5))?;
     println!("{:?}", client.rndc_command("status")?);
     Ok(())
 }
@@ -94,14 +117,13 @@ system connection errors and server-side limits still apply.
 System DNS resolution is synchronous and is outside this time limit. Use an IP
 address when you need to avoid DNS lookup delays.
 
-Server responses must pass HMAC verification. Responses larger than 1 MiB
-(excluding the four-byte length prefix), fields outside their containing buffer,
-and tables or lists nested more than 32 levels below the root response table are
-rejected. Client debug output redacts the secret key.
+Responses larger than 1 MiB (excluding the four-byte length prefix), fields
+outside their containing buffer, and tables or lists nested more than 32 levels
+below the root response table are rejected.
 
 ## Tests
 
-Run the unit tests, mock-server integration tests, and README compile check:
+Run the unit tests, mock-server integration tests, and README compile checks:
 
 ```sh
 cargo test --locked
@@ -130,3 +152,16 @@ as the usage example. Remove the server after testing:
 ```sh
 docker rm -f rndc-bind-test
 ```
+
+## Publishing
+
+To check the package before publishing:
+
+```sh
+cargo package --locked --list
+cargo publish --locked --dry-run
+```
+
+## License
+
+Mozilla Public License 2.0. See [LICENSE](https://github.com/kweonminsung/bind9_rndc_rust/blob/main/LICENSE).
