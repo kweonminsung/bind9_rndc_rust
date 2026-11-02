@@ -1,18 +1,21 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "extends": [
-        "config:recommended"
+        "config:recommended",
+        "helpers:pinGitHubActionDigests"
     ],
-    "baseBranches": [
-        "main"
+    "baseBranchPatterns": [
+        "develop"
     ],
     "automerge": true,
+    "rangeStrategy": "bump",
     "packageRules": [
         {
-            "matchPackagePatterns": [
-                ".*"
+            "description": "A major bump can pass build and tests while changing behaviour, so it waits for a human.",
+            "matchUpdateTypes": [
+                "major"
             ],
-            "rangeStrategy": "bumpMinor"
+            "automerge": false
         }
     ]
 }
